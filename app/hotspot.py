@@ -179,8 +179,9 @@ def ai_filter(items):
     prompt = FILTER_PROMPT + "\n热点词:\n" + "\n".join(f"- {w}" for w in words[:40])
     try:
         r = subprocess.run(["bl", "text", "chat", "--message", prompt,
-                           "--model", "qwen3.6-plus", "--quiet"],
-                           capture_output=True, text=True, timeout=90)
+                           "--model", "qwen3.6-plus", "--max-tokens", "1500",
+                           "--temperature", "0.1", "--quiet"],
+                           capture_output=True, text=True, timeout=150)
         out = r.stdout.strip()
         # 解析 JSON
         import re
@@ -214,23 +215,35 @@ def category_summary(items):
     c = Counter(it.get("category", "其他") for it in items)
     return dict(c)
 
-# 明显无关的类别词（时政/财经/体育/社会新闻等）——预筛掉，减少 AI 负担
-IRRELEVANT_KEYWORDS = ["下半旗", "悼念", "纪委", "公诉", "铁路", "投资", "能源", "财政",
-    "股市", "涨停", "跌超", "基金", "GDP", "会谈", "访问", "主席", "总理", "国务院",
-    "比赛", "夺冠", "世界杯", "奥运会", "世锦赛", "U17", "女足", "国乒", "男单",
-    "上市公司", "发布会", "起诉", "案", "判决", "死刑", "谣言", "辟谣", "安全",
-    "地震", "台风", "疫情", "房价", "彩礼", "离婚", "结婚", "生育", "高考",
-    "政府", "干部", "犯罪", "诈骗", "孩子", "老人", "外卖", "工资", "经济"]
+# 正向关键词：命中这些词的才可能适合拼豆（动漫/游戏/影视/宠物/手工等）
+RELEVANT_KEYWORDS = [
+    # 动画/番剧
+    "动画", "番剧", "国创", "剧场版", "漫画", "动漫", "新番", "动画电影", "二次元",
+    # 游戏
+    "游戏", "原神", "崩坏", "星穹", "绝区零", "宝可梦", "皮卡丘", "塞尔达", "王者",
+    "无畏契约", "英雄联盟", "LOL", "PVZ", "植物大战僵尸", "游戏角色", "手游",
+    # 影视/剧
+    "电影", "电视剧", "新片", "票房", "上映", "剧集", "影评", "角色",
+    # 角色/明星/网红
+    "奥特曼", "海贼王", "火影", "龙珠", "柯南", "蜡笔小新", "哆啦A梦", "吉伊卡哇",
+    "chiikawa", "玲娜贝儿", "迪士尼", "乐高", "手办", "盲盒", "谷子", "cosplay", "COS",
+    # 宠物
+    "猫", "狗", "宠物", "萌宠", "橘猫", "小猫", "小狗", "布偶", "柯基", "柴犬",
+    # 手工/DIY
+    "手工", "拼豆", "DIY", "手作", "钩织", "编织", "积木", "十字绣",
+    # 可爱/表情
+    "表情包", "可爱", "萌", "吉祥物", "IP", "联名", "周边", "手办",
+    # 节日/纪念
+    "七夕", "圣诞", "万圣", "生日", "纪念日", "情人节",
+]
 
-def prefilter(items, max_count=40):
-    """启发式预筛：去掉明显与形象创作无关的热点，保留可能适合拼豆的候选"""
+def prefilter(items, max_count=25):
+    """正向预筛：只保留明显可能适合拼豆的热点（命中关键词），减少 AI 负担"""
     kept = []
     for it in items:
         w = it.get("word", "")
-        # 命中排除词 → 跳过
-        if any(k in w for k in IRRELEVANT_KEYWORDS):
-            continue
-        kept.append(it)
+        if any(k in w for k in RELEVANT_KEYWORDS):
+            kept.append(it)
     # 按热度取前 max_count
     kept.sort(key=lambda x: -x.get("heat", 0))
     return kept[:max_count]
@@ -256,14 +269,22 @@ ANIME_KEYWORDS = ["动画", "番剧", "国创", "剧场版", "漫画", "动漫",
                   "cos", "同人", "周边", "手作", "谷子", "玩偶", "吉祥物"]
 
 def heuristic_filter(items):
-    """关键词启发式过滤（AI 不可用时的降级）"""
+    """关键词启发式过滤（AI 不可用时的降级，尽量提取角色名）"""
     out = []
     for it in items:
         w = it.get("word", "")
         if any(k.lower() in w.lower() for k in ANIME_KEYWORDS):
-            cat = "游戏" if any(k in w for k in ["原神", "崩坏", "星穹", "绝区零", "游戏", "宝可梦", "手游"]) else \
-                  ("动画" if any(k in w for k in ["动画", "番剧", "国创", "剧场版", "漫画", "动漫"]) else "其他")
-            out.append({**it, "character": "", "category": cat, "reason": "关键词命中"})
+            cat = "游戏" if any(k in w for k in ["原神", "崩坏", "星穹", "绝区零", "游戏", "宝可梦", "手游", "PVZ", "植物大战僵尸"]) else \
+                  ("动画" if any(k in w for k in ["动画", "番剧", "国创", "剧场版", "漫画", "动漫", "奥特曼", "海贼王"]) else "其他")
+            # 从标题提取角色名：优先已知 IP，否则用原标题前 8 字
+            char = ""
+            for ip in ["奥特曼", "海贼王", "植物大战僵尸", "无畏契约", "原神", "宝可梦", "吉伊卡哇", "火影", "柯南"]:
+                if ip in w:
+                    char = ip
+                    break
+            if not char:
+                char = w[:6]
+            out.append({**it, "character": char, "category": cat, "reason": "关键词命中(降级)"})
     return out[:10]
 
 # ---- 热点库存储 ----

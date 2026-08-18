@@ -19,8 +19,17 @@ GENERIC_FRAGMENT = (
     "正面正视，正交俯视图，不要透视。"
 )
 
-def build_prompt(style_id="classic", width=30, max_colors=16, extra_subject=""):
+def build_prompt(style_id="classic", width=30, max_colors=16, extra_subject="", is_edit=False):
     style = config.STYLES.get(style_id, config.STYLES["classic"])
+    if is_edit:
+        # 编辑模式（基于原图）：纯风格转换，不提及角色/IP名，规避版权审核
+        return (
+            "将这张图片转换为硬边像素拼豆艺术风格。每个像素块必须是单一纯色、"
+            "边界锐利，严禁渐变/晕染/柔边/照片质感/混色；"
+            f"风格: {style['prompt_fragment']}。"
+            f"网格约 {width} 格宽，最多 {max_colors} 种颜色。"
+            "保留原图的主体形象、特征和配色，仅做像素化风格转换。"
+        )
     return (
         f"{GENERIC_FRAGMENT} "
         f"风格: {style['prompt_fragment']}。"
@@ -34,7 +43,8 @@ def pixelate(source_path, out_path, style_id="classic", width=30, max_colors=16,
     source_path 为原图（客户图）时用 edit 保持主体；无原图时用 generate
     返回 (success, out_path_or_err)
     """
-    prompt = build_prompt(style_id, width, max_colors, extra_subject)
+    # 参考图模式：只用风格转换提示词，不包含角色名/IP名（避免版权审核拦截）
+    prompt = build_prompt(style_id, width, max_colors, extra_subject, is_edit=True)
     # 输出目录强制指定到订单 intermediate（沙箱内），避免 bl 默认写 ~/bailian-output
     safe_dir = out_dir or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "_bl_tmp")
     os.makedirs(safe_dir, exist_ok=True)

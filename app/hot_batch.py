@@ -59,6 +59,9 @@ def generate_multi_style(keyword, character, ref_path, styles=("classic", "chibi
     for style in styles:
         res = generate_hot_order(keyword, character, ref_path, style=style,
                                  tier=tier, orders_root=orders_root, do_qc=do_qc)
+        if not res.get("success"):
+            # 内容审核拦截（版权IP）等错误：记录但不中断
+            res["error"] = str(res.get("error", ""))[:120]
         results.append({"style": style, **res})
         time.sleep(1)
     return results
@@ -113,7 +116,11 @@ def process_hotspot(item, styles=("classic", "chibi_pastel"), orders_root=None):
     if entry["styles"]:
         add_to_gallery(entry)
         return {"success": True, "entry": entry, "ref_path": ref_path}
-    return {"success": False, "keyword": keyword, "error": "出图失败", "results": results}
+    # 全部失败：判断是否是版权审核拦截
+    errs = [r.get("error", "") for r in results]
+    audit = any("DataInspectionFailed" in e or "inappropriate" in e for e in errs if e)
+    msg = "AI 内容审核拦截（可能是版权IP角色图，无法自动生成）" if audit else f"出图失败: {errs[0][:80] if errs else '未知'}"
+    return {"success": False, "keyword": keyword, "error": msg, "results": results}
 
 if __name__ == "__main__":
     import argparse
