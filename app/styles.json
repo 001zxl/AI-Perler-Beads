@@ -1,0 +1,173 @@
+{
+  "classic": {
+    "name": "经典像素",
+    "desc": "深色轮廓、标准色板、还原度高",
+    "prompt_fragment": "经典拼豆像素风格，深色外轮廓，标准饱和色板，还原原图主体特征",
+    "palette": "standard",
+    "outline": "dark",
+    "background": "margin",
+    "suitable": "通用/宠物/人像"
+  },
+  "chibi_pastel": {
+    "name": "Q版马卡龙",
+    "desc": "大头圆润可爱，柔和低饱和马卡龙色系",
+    "prompt_fragment": "Q版卡通风格，大头身比例，圆润轮廓，柔和马卡龙色系（低饱和粉/蓝/黄/薄荷绿）",
+    "palette": "pastel",
+    "outline": "dark",
+    "background": "margin",
+    "suitable": "宠物/情侣/儿童画"
+  },
+  "retro8bit": {
+    "name": "复古8-bit",
+    "desc": "高饱和撞色，红白机游戏质感",
+    "prompt_fragment": "复古8-bit红白机游戏像素风，高饱和彩色撞色（禁止黑白灰单色），块状明暗，硬边像素，游戏角色质感",
+    "palette": "vivid",
+    "outline": "dark",
+    "background": "margin",
+    "suitable": "动漫/游戏/酷炫"
+  },
+  "minimal": {
+    "name": "极简线条",
+    "desc": "少色留白多，线条感强，最省豆",
+    "prompt_fragment": "极简风格，用最少颜色和线条勾勒主体，大面积留白，简洁干净",
+    "palette": "minimal",
+    "outline": "dark",
+    "background": "white",
+    "suitable": "Logo/简约送礼"
+  },
+  "neon": {
+    "name": "赛博霓虹",
+    "desc": "深色底+高亮霓虹色，夜店风",
+    "prompt_fragment": "赛博朋克霓虹风格，纯深色背景，高亮霓虹粉/青/紫纯色块点缀，每块纯色硬边，严禁发光晕染和渐变",
+    "palette": "neon",
+    "outline": "none",
+    "background": "dark",
+    "suitable": "潮流/送男生"
+  },
+  "popart": {
+    "name": "波普艺术",
+    "desc": "高对比撞色，漫画网点感",
+    "prompt_fragment": "波普艺术风格，极高对比纯色撞色（大红/明黄/宝蓝/纯黑），漫画感粗黑轮廓，硬边纯色块，夸张明快",
+    "palette": "pop",
+    "outline": "dark",
+    "background": "margin",
+    "suitable": "头像/艺术感"
+  },
+  "crayon": {
+    "name": "蜡笔涂鸦",
+    "desc": "童趣粗线条，孩子画风",
+    "prompt_fragment": "儿童积木/乐高拼块风格，粗黑色轮廓线包裹每个色块，像彩色积木块拼成，每个积木块单一纯色硬边矩形，童趣质朴，绝对禁止渐变、抗锯齿、柔和过渡",
+    "palette": "crayon",
+    "outline": "dark",
+    "background": "margin",
+    "suitable": "儿童画/亲子"
+  },
+  "watercolor": {
+    "name": "水彩柔和",
+    "desc": "柔和色块过渡，温柔感",
+    "prompt_fragment": "色块拼贴水彩感风格，柔和粉彩色系，每个色块单一纯色硬边无渐变，像彩色玻璃马赛克，清新温柔",
+    "palette": "soft",
+    "outline": "none",
+    "background": "margin",
+    "suitable": "文艺/风景/花"
+  },
+  "festive": {
+    "name": "圣诞节日",
+    "desc": "红绿金节日色板",
+    "prompt_fragment": "圣诞节日风格，红/绿/金节日配色，喜庆",
+    "palette": "festive",
+    "outline": "dark",
+    "background": "margin",
+    "suitable": "节日送礼/圣诞"
+  },
+  "mono": {
+    "name": "黑白线稿",
+    "desc": "单色系，最省豆最便宜",
+    "prompt_fragment": "严格黑白线稿风格，画面只允许黑/白/灰色，禁止任何彩色，明暗用灰色阶块面表现，高对比，硬边像素，像报纸照片或素描",
+    "palette": "mono",
+    "outline": "dark",
+    "background": "white",
+    "suitable": "低价引流/素描风"
+  },
+  "dither": {
+    "name": "抖动渐变",
+    "desc": "像素抖动渐变技法，过渡细腻层次丰富",
+    "prompt_fragment": "像素抖动渐变技法(dithering)，用点状交错像素块模拟渐变过渡，层次细腻，硬边纯色点阵，复古印刷质感",
+    "palette": "standard",
+    "outline": "dark",
+    "background": "margin",
+    "suitable": "风景/人像/细腻过渡"
+  },
+  "vaporwave": {
+    "name": "蒸汽波",
+    "desc": "复古电子美学，粉紫蓝渐变霓虹",
+    "prompt_fragment": "蒸汽波Vaporwave风格，粉紫蓝霓虹色系，复古电子美学，网格背景感，硬边像素块，梦幻",
+    "palette": "neon",
+    "outline": "none",
+    "background": "dark",
+    "suitable": "潮流/音乐/复古"
+  },
+  "inkwash": {
+    "name": "国风水墨",
+    "desc": "水墨画质感，黑白灰层次",
+    "prompt_fragment": "国风水墨画风格，水墨晕染层次用灰色阶像素块表现，黑白灰为主，留白意境，硬边像素",
+    "palette": "mono",
+    "outline": "none",
+    "background": "white",
+    "suitable": "山水/竹子/国风"
+  },
+  "comic": {
+    "name": "美式漫画",
+    "desc": "美漫粗线条，网点阴影，夸张表情",
+    "prompt_fragment": "美式漫画风格，粗黑轮廓线，网点阴影用像素点表现，夸张表情，鲜艳硬边色块，复古漫画",
+    "palette": "pop",
+    "outline": "dark",
+    "background": "margin",
+    "suitable": "人物/超级英雄/表情"
+  },
+  "kawaii": {
+    "name": "日系软萌",
+    "desc": "日系二次元软萌，圆润粉嫩",
+    "prompt_fragment": "日系二次元软萌风格，圆润可爱比例，粉嫩色系，大眼睛高光，甜美感，硬边像素",
+    "palette": "pastel",
+    "outline": "dark",
+    "background": "margin",
+    "suitable": "二次元/少女/宠物"
+  },
+  "stainedglass": {
+    "name": "彩色玻璃",
+    "desc": "教堂彩色玻璃拼贴质感，重色分隔",
+    "prompt_fragment": "彩色玻璃马赛克风格，深色粗线分隔色块，像教堂花窗，每块饱和纯色硬边，玻璃质感",
+    "palette": "vivid",
+    "outline": "dark",
+    "background": "dark",
+    "suitable": "logo/艺术感/风景"
+  },
+  "embroider": {
+    "name": "十字绣",
+    "desc": "十字绣纹理，线迹质感",
+    "prompt_fragment": "十字绣风格，X形线迹纹理感，织物底色，柔和色彩，硬边色块模拟绣线",
+    "palette": "soft",
+    "outline": "none",
+    "background": "margin",
+    "suitable": "文艺/家居/装饰画"
+  },
+  "halloween": {
+    "name": "万圣节",
+    "desc": "万圣节主题，黑橙紫南瓜蝙蝠",
+    "prompt_fragment": "万圣节主题风格，黑/橙/紫/绿色板，南瓜蝙蝠幽灵元素，节日感，硬边像素",
+    "palette": "festive",
+    "outline": "dark",
+    "background": "dark",
+    "suitable": "节日送礼/派对"
+  },
+  "pixel_pet": {
+    "name": "萌宠像素",
+    "desc": "宠物特写像素，毛发细节块面化",
+    "prompt_fragment": "宠物肖像像素风格，毛发用色块层次表现，大眼睛神态，温暖色调，硬边像素，写实可爱",
+    "palette": "standard",
+    "outline": "dark",
+    "background": "margin",
+    "suitable": "宠物定制(主打)"
+  }
+}

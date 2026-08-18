@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>拼豆工坊 · AI 拼豆图纸生成器</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>🧩 拼豆工坊</h1>
+  <p class="sub">上传一张图 → 选档位 / 风格 / 规格 → 一键生成可施工交付包（含色号坐标 + 采购清单 + 成品预览 + 小红书素材）</p>
+</header>
+
+<main>
+  <!-- 热点雷达 -->
+  <section class="card" id="hot-card">
+    <div class="hot-header">
+      <h2>🔥 本周热点图纸 <small class="hint">每日自动抓取微博/B站热点，AI 筛选动漫影视角色</small></h2>
+      <div class="hot-actions">
+        <button class="ghost" id="hot-refresh">🔄 刷新热点</button>
+        <button class="ghost" id="hot-batch">⚡ 给热点批量出图</button>
+      </div>
+      <div class="hot-manual">
+        <input type="text" id="hot-word" placeholder="手动加热点词（如：新番角色名）">
+        <input type="text" id="hot-char" placeholder="角色名（可选）">
+        <select id="hot-cat">
+          <option>动画</option><option>游戏</option><option>影视</option>
+          <option>角色IP</option><option>表情包</option><option>其他</option>
+        </select>
+        <button class="mini-btn" id="hot-add">➕ 添加</button>
+      </div>
+    </div>
+    <div id="hot-cats" class="hot-cats"><span class="cat-tab active" data-cat="全部">全部</span></div>
+    <div id="hot-trending" class="hot-trending"><p class="hint">加载中…</p></div>
+    <div id="hot-gallery" class="hot-gallery"></div>
+  </section>
+
+  <!-- 上传区 -->
+  <section class="card" id="upload-card">
+    <h2>① 上传图片</h2>
+    <div id="dropzone">
+      <input type="file" id="file-input" accept="image/*" hidden>
+      <p class="dz-text">📷 点击或拖拽图片到此处<br><small>支持 JPG / PNG / WebP，建议正方形或接近正方形</small></p>
+    </div>
+    <div id="preview-wrap" hidden>
+      <img id="preview-img" alt="预览">
+      <button class="ghost" id="change-btn">换一张</button>
+    </div>
+  </section>
+
+  <!-- 档位 -->
+  <section class="card">
+    <h2>② 选择档位 <small class="hint">价格锚定，对应店铺链接</small></h2>
+    <div id="tiers" class="tier-grid"></div>
+  </section>
+
+  <!-- 风格 -->
+  <section class="card">
+    <h2>③ 选择风格 <small class="hint">同一张图可出多种风格</small></h2>
+    <label class="check compare-toggle"><input type="checkbox" id="compare-mode"> 对比模式（选 2-3 个风格批量生成后对比）</label>
+    <div id="styles" class="style-grid"></div>
+  </section>
+
+  <!-- 规格 -->
+  <section class="card">
+    <h2>④ 规格参数 <small class="hint">不选则用档位默认值</small></h2>
+    <div class="spec-row">
+      <label>网格宽
+        <select id="width"><option value="">档位默认</option><option>30</option><option>50</option><option>60</option></select>
+      </label>
+      <label>最大色数
+        <select id="colors"><option value="">档位默认</option><option>8</option><option>16</option><option>24</option></select>
+      </label>
+      <label>色卡
+        <select id="colorcard"></select>
+      </label>
+      <label>拼豆规格
+        <select id="bead"><option>2.6mm</option><option>5mm</option></select>
+      </label>
+    </div>
+    <div class="spec-row">
+      <label>主题（用于标题/文案）
+        <input type="text" id="subject" placeholder="如：我家橘猫、女朋友、宝宝">
+      </label>
+      <label>自定义标题（可选）
+        <input type="text" id="title" placeholder="留空自动生成">
+      </label>
+    </div>
+    <label class="check"><input type="checkbox" id="qc" checked> 启用 AI 质检（更稳，稍慢）</label>
+  </section>
+
+  <!-- 生成按钮 -->
+  <section class="card center">
+    <button id="generate-btn" class="primary">⚡ 一键生成拼豆图纸</button>
+    <div id="progress" hidden><div class="bar"><div class="fill" id="fill"></div></div><p id="status-text">处理中…</p></div>
+  </section>
+
+  <!-- 三轨计费 -->
+  <section class="card" id="billing-card">
+    <div class="hot-header">
+      <h2>💰 客户计费（按单 / 次数包 / 会员）</h2>
+      <div class="hot-actions">
+        <button class="ghost" id="credits-refresh">🔄 刷新</button>
+      </div>
+    </div>
+    <div class="bill-row">
+      <label>客户名（微信昵称/闲鱼ID）
+        <input type="text" id="bill-name" placeholder="如：阿花">
+      </label>
+      <button class="ghost" id="bill-check">🔍 查余额</button>
+    </div>
+    <div id="bill-status" class="bill-status"></div>
+    <div id="bill-packages" class="bill-packages"></div>
+    <div id="bill-all" class="bill-all"></div>
+  </section>
+
+  <!-- 结果 -->
+  <section class="card" id="result-card" hidden>
+    <h2>✅ 交付包已生成</h2>
+    <div id="result-meta"></div>
+    <div id="lessons-box" class="lessons" hidden></div>
+    <div id="gallery"></div>
+    <div id="downloads"></div>
+
+    <div class="feedback-panel">
+      <h3>📝 客户反馈记录（学习闭环）</h3>
+      <p class="hint">记录不满意原因与调试经验 → 下次同类订单自动带出建议，越用越准</p>
+      <div class="fb-row">
+        <label>客户是否满意
+          <select id="fb-satisfied"><option value="true">✅ 满意</option><option value="false">❌ 不满意</option></select>
+        </label>
+        <label>不满意原因（不满意时选）
+          <select id="fb-reason">
+            <option value="">—</option>
+            <option>颜色不对</option><option>风格不像</option><option>图纸太小看不清</option>
+            <option>细节丢失</option><option>色号对不上材料</option><option>其他</option>
+          </select>
+        </label>
+      </div>
+      <div class="fb-row">
+        <label>客户具体反馈/需求（如"想要更蓝一点"）
+          <input type="text" id="fb-detail" placeholder="可选">
+        </label>
+      </div>
+      <div class="fb-row">
+        <label>你做了什么调整（如"把色板偏置改冷色重试"）
+          <input type="text" id="fb-action" placeholder="可选，但建议填写">
+        </label>
+        <label>经验教训（下次怎么避免）
+          <input type="text" id="fb-lesson" placeholder="可选，沉淀给以后">
+        </label>
+      </div>
+      <button class="ghost" id="fb-save">💾 保存反馈</button>
+      <span id="fb-status" class="hint"></span>
+    </div>
+  </section>
+</main>
+
+<footer>拼豆工坊 v1.0 · 本地运行 · AI 像素化 + 代码施工图（色卡映射引擎）</footer>
+<script src="/static/app.js"></script>
+</body>
+</html>

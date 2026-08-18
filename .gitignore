@@ -1,0 +1,25 @@
+# 运行数据（不提交）
+orders/
+hot_content/
+xianyu_posts/
+samples/hot_refs/
+_bl_tmp/
+credits.json
+feedback.json
+hotspots.json
+hot_gallery.json
+daily_report.json
+daily_cron.log
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Node
+node_modules/
+tools/goofish-cli/
+
+# 系统
+.DS_Store
+*.log

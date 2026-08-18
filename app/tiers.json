@@ -1,0 +1,38 @@
+{
+  "引流款": {
+    "id": "entry",
+    "price": 4.2,
+    "width": 30,
+    "height": "auto",
+    "colors": 16,
+    "bead": "2.6mm",
+    "colorcard": "mard",
+    "style": "classic",
+    "features": ["基础像素图", "含色号"],
+    "desc": "让人进门"
+  },
+  "主力款": {
+    "id": "main",
+    "price": 19.9,
+    "width": 60,
+    "height": "auto",
+    "colors": 16,
+    "bead": "2.6mm",
+    "colorcard": "mard",
+    "style": "any",
+    "features": ["任意风格", "色号+坐标", "采购清单", "成品预览"],
+    "desc": "主要利润"
+  },
+  "利润款": {
+    "id": "profit",
+    "price": 69,
+    "width": [30, 50, 60],
+    "height": "auto",
+    "colors": 24,
+    "bead": "2.6mm",
+    "colorcard": "mard",
+    "style": "any",
+    "features": ["3 尺寸包", "2 风格包", "变装版", "制作教程"],
+    "desc": "拉高客单"
+  }
+}
