@@ -36,6 +36,14 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
     title = title or f"{subject}拼豆图纸 ({style['name']})"
     order_id = new_order_id()
     order_dir = make_order_dir(orders_root, order_id)
+    # 源图存档（供微调/重新生成用）
+    try:
+        import shutil
+        if os.path.exists(source_path):
+            ext = os.path.splitext(source_path)[1] or ".jpg"
+            shutil.copy(source_path, os.path.join(order_dir, "source", f"source{ext}"))
+    except Exception:
+        pass
     meta = {
         "order_id": order_id, "tier": tier_key, "style": style_id, "style_name": style["name"],
         "width": width, "height": height, "max_colors": max_colors, "colorcard": colorcard,
@@ -67,15 +75,26 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
         # 主导色后全局量化到 max_colors（防止每格独立采样导致色数爆炸）
         if len(set(grid_rgb)) > max_colors:
             grid_rgb = global_quantize(grid_rgb, max_colors)
+        # 面部关键点保护（眼睛/鼻口，AI 定位）
+        face_regions = {}
+        try:
+            from pipeline.face_guard import detect_face_regions, apply_face_guard
+            if not skip_ai:
+                face_regions = detect_face_regions(work_img, W, H)
+        except Exception:
+            face_regions = {}
         # 孤立噪点清理（解决细节碎/毛发脏）
         grid_rgb, _iso = remove_isolated_pixels(grid_rgb, W, H)
+        # 面部保护：眼睛区域跳过清理 + 鼻口简化
+        if face_regions:
+            grid_rgb, _protected = apply_face_guard(grid_rgb, W, H, face_regions)
         # BFS 连通区域杂色清理（借鉴 perler-beads，提升色块纯净度）
         grid_rgb = bfs_cleanup(grid_rgb, W, H, threshold=18)
         # 鼻口小区域简化（粉鼻子保护）
         grid_rgb, _sm = simplify_small_regions(grid_rgb, W, H, min_area=3)
         if len(set(grid_rgb)) > max_colors:
             grid_rgb = merge_near_colors(grid_rgb, max_colors)
-        steps["S2"] = f"{W}x{H} 网格, {len(set(grid_rgb))} 色 (主导色+噪点清理+简化)"
+        steps["S2"] = f"{W}x{H} 网格, {len(set(grid_rgb))} 色 (类型感知+面部保护+噪点清理)"
 
         # ---- S3 色卡映射（Oklab 感知色距，视觉更准）----
         mapper = OklabColorMapper(colorcard, style.get("palette", "standard"))
@@ -93,14 +112,33 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
         palette_path = os.path.join(order_dir, "delivery", "2_色卡与用量统计.png")
         palette_sheet.save(palette_path)
         csv_path = os.path.join(order_dir, "delivery", "3_采购清单.csv")
-        write_shopping_csv(rows, total, W, H, mapper.brand, csv_path)
+        write_shopping_csv(rows, total, W, H, mapper.brand, csv_path, mapper=mapper)
         steps["S5"] = f"{len(rows)} 色, 共 {total} 颗, 采购清单 CSV 完成"
 
-        # ---- S6 成品预览 ----
+        # ---- S5.5 可拼性评分 + 图纸信息卡 ----
+        try:
+            from pipeline.scorability import score_pattern, pattern_info, info_card_text
+            sc = score_pattern(grid_rgb, W, H, max_colors)
+            pinfo = pattern_info(grid_rgb, W, H, bead, difficulty=tier.get("difficulty", {}).get("level", "标准"))
+            meta["scorability"] = sc
+            meta["pattern_info"] = pinfo
+            # 信息卡写入交付
+            info_path = os.path.join(order_dir, "delivery", "3.5_图纸信息.txt")
+            with open(info_path, "w", encoding="utf-8") as f:
+                f.write(info_card_text(pinfo, mapper.brand))
+            steps["S5.5"] = f"可拼性评分 {sc['score']} 分 ({sc['verdict']})"
+        except Exception as e:
+            steps["S5.5"] = f"评分跳过: {str(e)[:50]}"
+
+        # ---- S6 成品预览 + 远看预览 ----
+        from pipeline.preview import render_preview, render_far_view
         preview_img = render_preview(grid_rgb, W, H)
         preview_path = os.path.join(order_dir, "delivery", "4_成品预览.png")
         preview_img.save(preview_path)
-        steps["S6"] = "成品预览完成"
+        far_img = render_far_view(grid_rgb, W, H)
+        far_path = os.path.join(order_dir, "delivery", "4.5_远看预览.png")
+        far_img.save(far_path)
+        steps["S6"] = "成品预览+远看预览完成"
 
         # ---- S7 内容素材 ----
         if os.path.exists(source_path):

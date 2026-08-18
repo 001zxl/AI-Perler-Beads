@@ -148,6 +148,21 @@ class OklabColorMapper:
             self._grid_cache[rgb] = (code, name, self.colors[code]["rgb"], de)
         return self._grid_cache[rgb]
 
+    def alternatives(self, code, top_n=2):
+        """替代色建议: 色号 code 的 top_n 个邻近色（同色系，缺豆时可替换）"""
+        if code not in self._lab_cache:
+            return []
+        lab = self._lab_cache[code]
+        scored = []
+        for other, olab in self._lab_cache.items():
+            if other == code:
+                continue
+            dE = delta_e_oklab(lab, olab)
+            if dE < 12:  # 视觉接近的
+                scored.append((dE, other, self.colors[other]["name"]))
+        scored.sort()
+        return [{"code": c, "name": n, "dE": round(de, 1)} for de, c, n in scored[:top_n]]
+
 # 风格色板倾向 → 候选色加权（抑制不协调色）
 _PALETTE_BIAS = {
     "standard": {},          # 无偏置

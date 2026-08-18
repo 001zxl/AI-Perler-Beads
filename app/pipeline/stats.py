@@ -53,13 +53,21 @@ def render_palette_sheet(rows, total, width, height, brand, reserve_ratio=0.05):
         draw.text((pad + 180, ry + 22), f"建议购买 {r['suggest']} 颗", fill=(90, 90, 90), font=_get_font(16))
     return img
 
-def write_shopping_csv(rows, total, width, height, brand, path):
-    """采购清单 CSV：色号/名称/实际数量/建议购买量"""
+def write_shopping_csv(rows, total, width, height, brand, path, mapper=None):
+    """采购清单 CSV：色号/名称/实际数量/建议购买量/替代色"""
     with open(path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
-        w.writerow(["色号", "颜色名称", "实际数量(颗)", "建议购买数量(颗,含5%备用)", "备注"])
+        w.writerow(["色号", "颜色名称", "实际数量(颗)", "建议购买数量(颗,含5%备用)", "替代色(缺豆时)", "备注"])
         for r in rows:
-            w.writerow([r["code"], r["name"], r["count"], r["suggest"], ""])
+            alt = ""
+            if mapper:
+                try:
+                    alts = mapper.alternatives(r["code"], top_n=1)
+                    if alts:
+                        alt = alts[0]["code"] + " " + alts[0]["name"]
+                except Exception:
+                    alt = ""
+            w.writerow([r["code"], r["name"], r["count"], r["suggest"], alt, ""])
         w.writerow([])
         w.writerow(["总豆数", "", total, "", ""])
         w.writerow(["网格尺寸", f"{width}x{height}", "", "", ""])

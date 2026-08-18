@@ -123,6 +123,17 @@
     <div id="gallery"></div>
     <div id="downloads"></div>
 
+    <div class="tune-panel">
+      <h3>🛠️ 人工微调（不满意可调整）</h3>
+      <p class="hint">重新生成时应用调整：减色（更简洁）/ 去杂点（更干净）</p>
+      <div class="tune-row">
+        <button class="ghost" id="tune-denoise">✨ 去杂点重生成</button>
+        <button class="ghost" id="tune-reduce8">🎨 减到8色重生成</button>
+        <button class="ghost" id="tune-reduce12">🎨 减到12色重生成</button>
+      </div>
+      <span id="tune-status" class="hint"></span>
+    </div>
+
     <div class="feedback-panel">
       <h3>📝 客户反馈记录（学习闭环）</h3>
       <p class="hint">记录不满意原因与调试经验 → 下次同类订单自动带出建议，越用越准</p>

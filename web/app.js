@@ -19,6 +19,7 @@ async function init() {
   });
   $("generate-btn").addEventListener("click", generate);
   bindFeedbackSave();
+  bindTune();
   bindHot();
   bindBilling();
   loadPackages();
@@ -209,6 +210,31 @@ function renderLessons(lessons) {
   if (L.lessons.length) html += `<div class="lesson-item">💡 经验：${L.lessons.map(l => "「" + l + "」").join("；")}</div>`;
   if (L.actions.length) html += `<div class="lesson-item">🔧 上次做法：${L.actions.map(a => "「" + a + "」").join("；")}</div>`;
   box.innerHTML = html;
+}
+
+// 人工微调
+function bindTune() {
+  const doTune = async (action, colors) => {
+    if (!state.orderId) { alert("先生成订单"); return; }
+    $("tune-status").textContent = "重生成中…";
+    const fd = new FormData();
+    fd.append("order_id", state.orderId);
+    fd.append("action", action);
+    if (colors) fd.append("colors", colors);
+    const r = await fetch("/api/tune", { method: "POST", body: fd });
+    const res = await r.json();
+    if (res.success) {
+      $("tune-status").textContent = "✅ 已重生成: " + res.order_id;
+      state.orderId = res.order_id;
+      renderResult(res);
+      renderLessons(res.lessons);
+    } else {
+      $("tune-status").textContent = "❌ " + (res.error || "失败");
+    }
+  };
+  $("tune-denoise").onclick = () => doTune("denoise");
+  $("tune-reduce8").onclick = () => doTune("reduce_colors", 8);
+  $("tune-reduce12").onclick = () => doTune("reduce_colors", 12);
 }
 
 // 反馈保存

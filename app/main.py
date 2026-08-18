@@ -240,6 +240,29 @@ def lessons_for_style(style: str):
     hits = feedback_mod.get_lessons_for(style=style)
     return {"hits": len(hits), "summary": feedback_mod.summarize_lessons(hits)}
 
+# ---------- 人工微调接口 ----------
+@app.post("/api/tune")
+async def tune_pattern(order_id: str = Form(...), action: str = Form("reduce_colors"),
+                       colors: Optional[int] = Form(None)):
+    """人工微调：基于源图重新生成（减色/去杂点/加轮廓）
+    action: reduce_colors(减色) / denoise(去杂点) / stronger_outline(加轮廓)
+    """
+    meta_path = os.path.join(ORDERS_ROOT, order_id, "meta.json")
+    if not os.path.exists(meta_path):
+        return {"success": False, "error": "订单不存在"}
+    with open(meta_path, encoding="utf-8") as f:
+        meta = json.load(f)
+    src_dir = os.path.join(ORDERS_ROOT, order_id, "source")
+    src_files = os.listdir(src_dir) if os.path.exists(src_dir) else []
+    if not src_files:
+        return {"success": False, "error": "无源图"}
+    src_path = os.path.join(src_dir, src_files[0])
+    kwargs = {"tier_key": meta.get("tier", "主力款"), "style_id": meta.get("style", "classic")}
+    if action == "reduce_colors":
+        kwargs["max_colors"] = colors or 8
+    res = run_order(src_path, **kwargs)
+    return {"success": True, **res}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8741)

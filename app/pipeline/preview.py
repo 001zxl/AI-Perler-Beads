@@ -23,3 +23,12 @@ def render_preview(grid_rgb, width, height, scale=48):
     img = ImageEnhance.Sharpness(img).enhance(2.0)
     img = ImageEnhance.Contrast(img).enhance(1.05)
     return img
+
+def render_far_view(grid_rgb, width, height, distance_factor=0.15):
+    """远看预览（模拟 1 米距离看成品）:
+    将成品预览缩小到 15%，再放大回来——模拟远看效果，判断"像不像"
+    """
+    full = render_preview(grid_rgb, width, height, scale=36)
+    small = full.resize((max(1, int(full.width * distance_factor)),
+                         max(1, int(full.height * distance_factor))), Image.Resampling.LANCZOS)
+    return small.resize(full.size, Image.Resampling.LANCZOS)
