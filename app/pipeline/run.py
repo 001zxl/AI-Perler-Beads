@@ -10,7 +10,8 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 from pipeline.ai_pixelate import pixelate
-from pipeline.quantize import quantize_grid, color_counts, merge_near_colors, bfs_cleanup, global_quantize
+from pipeline.quantize import (quantize_grid, color_counts, merge_near_colors, bfs_cleanup,
+                             global_quantize, remove_isolated_pixels, simplify_small_regions)
 from pipeline.colormap import ColorMapper, OklabColorMapper
 from pipeline.render import render_construction_sheet
 from pipeline.stats import compute_stats, render_palette_sheet, write_shopping_csv
@@ -66,11 +67,15 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
         # 主导色后全局量化到 max_colors（防止每格独立采样导致色数爆炸）
         if len(set(grid_rgb)) > max_colors:
             grid_rgb = global_quantize(grid_rgb, max_colors)
+        # 孤立噪点清理（解决细节碎/毛发脏）
+        grid_rgb, _iso = remove_isolated_pixels(grid_rgb, W, H)
         # BFS 连通区域杂色清理（借鉴 perler-beads，提升色块纯净度）
         grid_rgb = bfs_cleanup(grid_rgb, W, H, threshold=18)
+        # 鼻口小区域简化（粉鼻子保护）
+        grid_rgb, _sm = simplify_small_regions(grid_rgb, W, H, min_area=3)
         if len(set(grid_rgb)) > max_colors:
             grid_rgb = merge_near_colors(grid_rgb, max_colors)
-        steps["S2"] = f"{W}x{H} 网格, {len(set(grid_rgb))} 色 (主导色+全局量化+BFS)"
+        steps["S2"] = f"{W}x{H} 网格, {len(set(grid_rgb))} 色 (主导色+噪点清理+简化)"
 
         # ---- S3 色卡映射（Oklab 感知色距，视觉更准）----
         mapper = OklabColorMapper(colorcard, style.get("palette", "standard"))

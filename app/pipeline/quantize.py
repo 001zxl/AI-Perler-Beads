@@ -82,6 +82,99 @@ def color_counts(grid_rgb):
     """每色数量统计: {rgb: count}"""
     return dict(Counter(grid_rgb))
 
+def remove_isolated_pixels(grid_rgb, width, height):
+    """孤立噪点清理（解决细节碎/毛发脏）：
+    若某格被 3 个以上不同色包围（4邻域），用周围众数色替换。
+    借鉴 proper-pixel-art 的网格采样修正思路。
+    返回清理后的 grid
+    """
+    import numpy as np
+    arr = np.array(grid_rgb, dtype=np.int32).reshape(height, width, 3)
+    out = arr.copy()
+    changed = 0
+    for y in range(height):
+        for x in range(width):
+            # 收集 4 邻域
+            nbs = []
+            for dy, dx in ((1,0),(-1,0),(0,1),(0,-1)):
+                ny, nx = y+dy, x+dx
+                if 0 <= ny < height and 0 <= nx < width:
+                    nbs.append(tuple(arr[ny, nx]))
+            if not nbs:
+                continue
+            nb_set = set(nbs)
+            # 被 3 个以上不同色包围 → 孤立噪点
+            if len(nb_set) >= 3 and tuple(arr[y, x]) not in nb_set:
+                # 用众数替换
+                from collections import Counter
+                most = Counter(nbs).most_common(1)[0][0]
+                out[y, x] = most
+                changed += 1
+    return [tuple(p) for p in out.reshape(-1, 3)], changed
+
+def simplify_small_regions(grid_rgb, width, height, min_area=3, protect_pink=True):
+    """小区域简化（解决鼻口糊）：
+    面积 < min_area 的同色连通小区域，若与周围色相近则合并到周围主色。
+    protect_pink=True: 保护粉鼻子（高亮度低饱和粉）不被合并
+    """
+    from colormap import rgb_to_oklab, delta_e_oklab
+    n = len(grid_rgb)
+    oklabs = {c: rgb_to_oklab(c) for c in set(grid_rgb)}
+
+    def idx(r, c): return r * width + c
+    def neighbors(r, c):
+        for dr, dc in ((1,0),(-1,0),(0,1),(0,-1)):
+            nr, nc = r+dr, c+dc
+            if 0 <= nr < height and 0 <= nc < width:
+                yield nr, nc
+
+    def is_pink(rgb):
+        r, g, b = rgb
+        # 粉鼻子: 红色通道高、绿蓝低、整体较亮
+        return r > 180 and r > g * 1.4 and r > b * 1.2 and (r+g+b) > 350
+
+    visited = set()
+    changed = 0
+    for r in range(height):
+        for c in range(width):
+            i = idx(r, c)
+            if i in visited:
+                continue
+            color = grid_rgb[i]
+            # BFS 同色区域
+            stack, region = [(r, c)], []
+            while stack:
+                cr, cc = stack.pop()
+                ci = idx(cr, cc)
+                if ci in visited or grid_rgb[ci] != color:
+                    continue
+                visited.add(ci)
+                region.append((cr, cc))
+                for nr, nc in neighbors(cr, cc):
+                    if idx(nr, nc) not in visited:
+                        stack.append((nr, nc))
+            # 小区域处理
+            if len(region) < min_area:
+                # 若含粉鼻子则保护（不合并）
+                if protect_pink and any(is_pink(grid_rgb[idx(rr, cc)]) for rr, cc in region):
+                    continue
+                # 找边界外相邻色
+                border = []
+                for (rr, cc) in region:
+                    for nr, nc in neighbors(rr, cc):
+                        nb = grid_rgb[idx(nr, nc)]
+                        if nb != color:
+                            border.append(nb)
+                if not border:
+                    continue
+                from collections import Counter
+                best = Counter(border).most_common(1)[0][0]
+                if delta_e_oklab(oklabs[color], oklabs[best]) < 30:
+                    for (rr, cc) in region:
+                        grid_rgb[idx(rr, cc)] = best
+                    changed += 1
+    return grid_rgb, changed
+
 def bfs_cleanup(grid_rgb, width, height, threshold=18):
     """BFS 连通区域杂色清理（借鉴 perler-beads）:
     孤立的小色块（面积 < min_area）若与邻域色距 < threshold，合并到相邻主色

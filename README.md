@@ -232,6 +232,21 @@ python3 -m app.hot_batch --keyword 吉伊卡哇 --character 吉伊卡哇  # 指�
 - 内容包: `hot_content/<角色>/`（标题.txt/文案.txt/预览图/施工图/交付包）
 - 日报: `daily_report.json`
 
+## 小红书起号内容生成器（app/xhs_growth.py）
+
+口碑+粉丝→卖图纸转化的完整内容生产链：
+
+| 命令 | 产出 |
+|---|---|
+| `python3 -m app.xhs_growth --type tutorial` | 教程图文包（5步图+封面+文案+标签） |
+| `python3 -m app.xhs_growth --type pet --image 猫图 --name 名字` | 宠物定制包（封面+全套交付+文案） |
+| `python3 -m app.xhs_growth --type calendar` | 30天内容日历 CSV（含转化目标） |
+
+- **6 大差异化卖点**植入所有文案（色号对应/采购清单/质检/19风格/坐标/效率）
+- **5 套标题公式**按内容类型自动生成
+- **封面差异化角标**（"带色号"/"来图定制"）
+- 文案已去除强营销词（微信/闲鱼/10分钟出图等），符合小红书起号安全
+
 ## 路线图
 
 - 阶段二：素材包自动发货（9.9 元纯被动）、丢图自动通知

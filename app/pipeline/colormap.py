@@ -96,17 +96,48 @@ class OklabColorMapper:
         self.bias = _PALETTE_BIAS.get(palette_bias, {})
         self._grid_cache = {}
 
-    def nearest(self, rgb):
+    BLACK_CODE = None  # 延迟查找
+    DARK_THRESHOLD = 45  # 接近黑的阈值（亮度）
+
+    def _find_black_code(self):
+        if self.BLACK_CODE is not None and self.BLACK_CODE in self.colors:
+            return self.BLACK_CODE
+        # 找色卡中最黑的颜色
+        best, best_v = None, 999
+        for code, c in self.colors.items():
+            v = sum(c["rgb"])
+            if v < best_v:
+                best_v, best = v, code
+        self.BLACK_CODE = best
+        return best
+
+    def nearest(self, rgb, suppress_black=True):
+        """最近色匹配。
+        suppress_black=True: 抑制过度映射到纯黑（解决眼睛被压黑）。
+        如果原色是深棕/深灰（非纯黑），优先映射到相近深色而非纯黑。"""
         lab = rgb_to_oklab(rgb)
+        # 黑色抑制：若原色是"接近黑但不是纯黑"（如深棕 40,30,20），
+        # 在候选集中排除纯黑，让它映射到深棕/深灰
+        black_code = self._find_black_code()
+        black_rgb = self.colors[black_code]["rgb"]
+        is_near_black = sum(rgb) < 150  # 亮度很低
+        is_pure_black = sum(rgb) < 40   # 接近纯黑
+
         best_code, best_dE = None, float("inf")
         for code, clab in self._lab_cache.items():
             if self.bias:
                 crgb = self.colors[code]["rgb"]
                 if not _passes_bias(crgb, self.bias):
                     continue
+            # 黑色抑制核心：深棕/深灰（非纯黑）不映射到纯黑
+            if suppress_black and is_near_black and not is_pure_black:
+                if code == black_code:
+                    continue
             dE = delta_e_oklab(lab, clab)
             if dE < best_dE:
                 best_dE, best_code = dE, code
+        if best_code is None:  # 全被抑制（极端情况）
+            best_code = black_code
         c = self.colors[best_code]
         return best_code, c["name"], best_dE
 
