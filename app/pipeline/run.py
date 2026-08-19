@@ -51,6 +51,16 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
     }
     steps = {}
     try:
+        # ---- S0 图片类型识别（用于轮廓/卡通化/关键区域策略）----
+        img_type = "默认"
+        try:
+            from pipeline.type_aware import detect_type
+            if not skip_ai:
+                img_type, _subj, _areas = detect_type(source_path)
+                meta["img_type"] = img_type
+        except Exception:
+            pass
+
         # ---- S1 AI 像素化 ----
         pixel_path = os.path.join(order_dir, "intermediate", "pixel_base.png")
         if skip_ai or not os.path.exists(source_path):
@@ -92,9 +102,16 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
         grid_rgb = bfs_cleanup(grid_rgb, W, H, threshold=18)
         # 鼻口小区域简化（粉鼻子保护）
         grid_rgb, _sm = simplify_small_regions(grid_rgb, W, H, min_area=3)
+        # 类型感知轮廓加粗（动漫/Logo 黑边、宠物深棕边）
+        try:
+            from pipeline.outline import strengthen_outline
+            img_type_hint = meta.get("img_type", "默认")
+            grid_rgb = strengthen_outline(grid_rgb, W, H, img_type_hint)
+        except Exception:
+            pass
         if len(set(grid_rgb)) > max_colors:
             grid_rgb = merge_near_colors(grid_rgb, max_colors)
-        steps["S2"] = f"{W}x{H} 网格, {len(set(grid_rgb))} 色 (类型感知+面部保护+噪点清理)"
+        steps["S2"] = f"{W}x{H} 网格, {len(set(grid_rgb))} 色 (类型+轮廓+清理)"
 
         # ---- S3 色卡映射（Oklab 感知色距，视觉更准）----
         mapper = OklabColorMapper(colorcard, style.get("palette", "standard"))
@@ -129,6 +146,16 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
             steps["S5.5"] = f"可拼性评分 {sc['score']} 分 ({sc['verdict']})"
         except Exception as e:
             steps["S5.5"] = f"评分跳过: {str(e)[:50]}"
+
+        # ---- PDF 打印版导出（施工图+色卡+信息 3页）----
+        try:
+            from pipeline.pdf_export import export_pdf
+            info_text = info_card_text(pinfo, mapper.brand)
+            pdf_path = os.path.join(order_dir, "delivery", "0_打印版.pdf")
+            export_pdf(sheet_path, palette_path, info_text, pdf_path)
+            steps["S5.6"] = "PDF打印版完成"
+        except Exception as e:
+            steps["S5.6"] = f"PDF跳过: {str(e)[:50]}"
 
         # ---- S6 成品预览 + 远看预览 ----
         from pipeline.preview import render_preview, render_far_view

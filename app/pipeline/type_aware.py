@@ -26,11 +26,12 @@ TYPE_STRATEGIES = {
         "suggested_styles": ["retro8bit", "kawaii", "classic"],
     },
     "真人": {
-        "key_points": ["眼睛", "鼻梁", "嘴巴"],
+        "key_points": ["眼睛", "鼻梁", "嘴巴", "手势"],
         "max_colors_default": 12,
         "outline": "soft",
-        "notes": "默认半身/头像，肤色减色阶，出卡通化版",
+        "notes": "默认半身/头像，肤色减色阶，先卡通化再拼豆，手势单独保护",
         "suggested_styles": ["classic", "watercolor", "dither"],
+        "cartoonize_first": True,
     },
     "风景": {
         "key_points": ["天际线", "建筑轮廓", "主色氛围"],
@@ -40,11 +41,12 @@ TYPE_STRATEGIES = {
         "suggested_styles": ["minimal", "inkwash", "stainedglass"],
     },
     "Logo": {
-        "key_points": ["严格网格对齐", "文字像素化"],
+        "key_points": ["严格网格对齐", "文字像素化", "字体笔画保护"],
         "max_colors_default": 8,
         "outline": "strong",
-        "notes": "字体重新像素化，小字不做，适合姓名牌/挂件",
+        "notes": "字体必须重新像素化设计（不能直接缩小否则断笔），小字不做",
         "suggested_styles": ["classic", "mono"],
+        "text_protect": True,
     },
 }
 

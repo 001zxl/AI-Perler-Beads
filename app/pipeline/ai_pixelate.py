@@ -22,13 +22,16 @@ GENERIC_FRAGMENT = (
 def build_prompt(style_id="classic", width=30, max_colors=16, extra_subject="", is_edit=False):
     style = config.STYLES.get(style_id, config.STYLES["classic"])
     if is_edit:
-        # 编辑模式（基于原图）：纯风格转换，不提及角色/IP名，规避版权审核
+        # 编辑模式（基于原图）：先卡通化再像素化（照片→插画→拼豆）
         return (
-            "将这张图片转换为硬边像素拼豆艺术风格。每个像素块必须是单一纯色、"
+            "先将这张照片转换为简洁的卡通插画风格："
+            "简化细节、大色块、清晰轮廓、减少噪点和纹理，"
+            "颜色层次分明（减少相近色阶），适合手工制作。"
+            "然后再转换为硬边像素拼豆艺术：每个像素块单一纯色、"
             "边界锐利，严禁渐变/晕染/柔边/照片质感/混色；"
             f"风格: {style['prompt_fragment']}。"
             f"网格约 {width} 格宽，最多 {max_colors} 种颜色。"
-            "保留原图的主体形象、特征和配色，仅做像素化风格转换。"
+            "保留主体形象和标志色，仅做卡通化+像素化。"
         )
     return (
         f"{GENERIC_FRAGMENT} "

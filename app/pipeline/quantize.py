@@ -82,9 +82,10 @@ def color_counts(grid_rgb):
     """每色数量统计: {rgb: count}"""
     return dict(Counter(grid_rgb))
 
-def remove_isolated_pixels(grid_rgb, width, height):
-    """孤立噪点清理（解决细节碎/毛发脏）：
-    若某格被 3 个以上不同色包围（4邻域），用周围众数色替换。
+def remove_isolated_pixels(grid_rgb, width, height, min_cluster=3):
+    """孤立噪点清理（用户要求：少于 2-3 颗的小色块自动合并）：
+    1. 单格噪点: 被 3 个以上不同色包围的格 → 众数替换
+    2. 小色块: 面积 < min_cluster(默认3) 的连通区域 → 合并到相邻主色
     借鉴 proper-pixel-art 的网格采样修正思路。
     返回清理后的 grid
     """
@@ -92,9 +93,9 @@ def remove_isolated_pixels(grid_rgb, width, height):
     arr = np.array(grid_rgb, dtype=np.int32).reshape(height, width, 3)
     out = arr.copy()
     changed = 0
+    # Pass 1: 单格噪点（被 3 个以上不同色包围）
     for y in range(height):
         for x in range(width):
-            # 收集 4 邻域
             nbs = []
             for dy, dx in ((1,0),(-1,0),(0,1),(0,-1)):
                 ny, nx = y+dy, x+dx
@@ -103,14 +104,20 @@ def remove_isolated_pixels(grid_rgb, width, height):
             if not nbs:
                 continue
             nb_set = set(nbs)
-            # 被 3 个以上不同色包围 → 孤立噪点
             if len(nb_set) >= 3 and tuple(arr[y, x]) not in nb_set:
-                # 用众数替换
                 from collections import Counter
                 most = Counter(nbs).most_common(1)[0][0]
                 out[y, x] = most
                 changed += 1
-    return [tuple(p) for p in out.reshape(-1, 3)], changed
+    # Pass 2: 小色块（面积 < min_cluster 的连通区域）合并到相邻主色
+    result = [tuple(p) for p in out.reshape(-1, 3)]
+    # 复用 simplify_small_regions 逻辑（min_area=min_cluster）
+    try:
+        from quantize import simplify_small_regions
+        result, _ = simplify_small_regions(result, width, height, min_area=min_cluster, protect_pink=True)
+    except Exception:
+        pass
+    return result, changed
 
 def simplify_small_regions(grid_rgb, width, height, min_area=3, protect_pink=True):
     """小区域简化（解决鼻口糊）：

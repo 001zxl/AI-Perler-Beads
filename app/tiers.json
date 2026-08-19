@@ -38,7 +38,7 @@
     "price": 69,
     "width": [30, 50, 60],
     "height": "auto",
-    "colors": 24,
+    "colors": 18,
     "bead": "2.6mm",
     "colorcard": "mard",
     "style": "any",
@@ -46,7 +46,7 @@
     "desc": "拉高客单",
     "difficulty": {
       "level": "精细",
-      "colors": 16,
+      "colors": 18,
       "desc": "更大尺寸、更像原图"
     }
   }
