@@ -56,23 +56,31 @@ DETECT_PROMPT = (
     "规则: 动物照片→宠物; 卡通/动画/漫画角色→动漫; 人物照片→真人; 风景/建筑/自然→风景; 标志/文字/徽章→Logo。"
 )
 
-def detect_type(image_path, model="qwen3-vl-plus"):
-    """AI 识别图片类型，返回 (type, subject, key_areas)"""
+def _codex_see(image_path, prompt, timeout=150):
+    """codex CLI 看图（GPT 后端，替代 bl vision）"""
+    cmd = ["codex", "exec", "--skip-git-repo-check", "--sandbox", "read-only",
+           "--color", "never", "-i", image_path]
     try:
-        r = subprocess.run(["bl", "vision", "describe", "--image", image_path,
-                            "--prompt", DETECT_PROMPT, "--model", model, "--quiet"],
-                           capture_output=True, text=True, timeout=90)
-        out = r.stdout.strip()
-        # bl vision --quiet 返回外层 JSON，真正的 JSON 在 content 字段（含转义）
+        r = subprocess.run(cmd, input=prompt + "\n", capture_output=True, text=True, timeout=timeout)
+        if r.returncode != 0:
+            return False, r.stderr.strip()[-300:] or "codex 视觉失败"
+        return True, r.stdout.strip()
+    except Exception as e:
+        return False, str(e)
+
+def detect_type(image_path, model=None):
+    """AI 识别图片类型（codex vision，GPT 后端）
+    返回 (type, subject, key_areas)"""
+    try:
+        ok, content = _codex_see(image_path, DETECT_PROMPT)
+        if not ok:
+            return "宠物", "未知", []
         import re
-        content = out
-        try:
-            outer = json.loads(out)
-            content = outer["choices"][0]["message"]["content"]
-        except Exception:
-            pass
         m = re.search(r"\{[\s\S]*\}", content)
         if not m:
+            for t in ("动漫", "真人", "风景", "Logo", "宠物"):
+                if t in content:
+                    return t, "未知", []
             return "宠物", "未知", []
         d = json.loads(m.group(0))
         t = d.get("type", "宠物")

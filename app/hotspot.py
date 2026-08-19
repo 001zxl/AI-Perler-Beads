@@ -178,10 +178,9 @@ def ai_filter(items):
         return []
     prompt = FILTER_PROMPT + "\n热点词:\n" + "\n".join(f"- {w}" for w in words[:40])
     try:
-        r = subprocess.run(["bl", "text", "chat", "--message", prompt,
-                           "--model", "qwen3.6-plus", "--max-tokens", "1500",
-                           "--temperature", "0.1", "--quiet"],
-                           capture_output=True, text=True, timeout=150)
+        r = subprocess.run(["codex", "exec", "--skip-git-repo-check", "--sandbox", "read-only",
+                           "--color", "never"],
+                           input=prompt + "\n", capture_output=True, text=True, timeout=150)
         out = r.stdout.strip()
         # 解析 JSON
         import re
