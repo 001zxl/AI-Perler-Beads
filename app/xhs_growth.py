@@ -113,8 +113,10 @@ def make_cover_with_badge(base_img_path, out_path, title, badge_text="带色号"
     draw = ImageDraw.Draw(canvas)
     # 标题区
     draw.rectangle([0, 0, W, 130], fill=(232, 93, 63))
-    font_big = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial Bold.ttf", 42)
-    font_small = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial.ttf", 26)
+    import sys as _s; _s.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from pipeline.render import _get_font as _cnfont
+    font_big = _cnfont(42, bold=True)
+    font_small = _cnfont(26)
     draw.text((W//2, 65), title, font=font_big, fill="white", anchor="mm")
     # 差异化角标（右上角）
     draw.rectangle([W-280, 150, W-20, 200], fill=(255, 200, 0), outline="black")
@@ -127,8 +129,10 @@ def generate_tutorial_pack(out_dir=None):
     from PIL import Image, ImageDraw, ImageFont
     out_dir = out_dir or os.path.join(GROWTH_DIR, "教程_照片变拼豆图纸")
     os.makedirs(out_dir, exist_ok=True)
-    font = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial Bold.ttf", 36)
-    font_s = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial.ttf", 26)
+    import sys as _s2; _s2.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from pipeline.render import _get_font as _cnfont2
+    font = _cnfont2(36, bold=True)
+    font_s = _cnfont2(26)
     # 5 张步骤图
     for i, (step, desc) in enumerate(TUTORIAL_STEPS, 1):
         img = Image.new("RGB", (1080, 1080), (248, 245, 240))

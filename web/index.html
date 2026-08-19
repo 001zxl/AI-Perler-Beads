@@ -13,30 +13,7 @@
 </header>
 
 <main>
-  <!-- 热点雷达 -->
-  <section class="card" id="hot-card">
-    <div class="hot-header">
-      <h2>🔥 本周热点图纸 <small class="hint">每日自动抓取微博/B站热点，AI 筛选动漫影视角色</small></h2>
-      <div class="hot-actions">
-        <button class="ghost" id="hot-refresh">🔄 刷新热点</button>
-        <button class="ghost" id="hot-batch">⚡ 给热点批量出图</button>
-      </div>
-      <div class="hot-manual">
-        <input type="text" id="hot-word" placeholder="手动加热点词（如：新番角色名）">
-        <input type="text" id="hot-char" placeholder="角色名（可选）">
-        <select id="hot-cat">
-          <option>动画</option><option>游戏</option><option>影视</option>
-          <option>角色IP</option><option>表情包</option><option>其他</option>
-        </select>
-        <button class="mini-btn" id="hot-add">➕ 添加</button>
-      </div>
-    </div>
-    <div id="hot-cats" class="hot-cats"><span class="cat-tab active" data-cat="全部">全部</span></div>
-    <div id="hot-trending" class="hot-trending"><p class="hint">加载中…</p></div>
-    <div id="hot-gallery" class="hot-gallery"></div>
-  </section>
-
-  <!-- 上传区 -->
+  <!-- 上传区（主流程第一步） -->
   <section class="card" id="upload-card">
     <h2>① 上传图片</h2>
     <div id="dropzone">
@@ -96,25 +73,6 @@
     <div id="progress" hidden><div class="bar"><div class="fill" id="fill"></div></div><p id="status-text">处理中…</p></div>
   </section>
 
-  <!-- 三轨计费 -->
-  <section class="card" id="billing-card">
-    <div class="hot-header">
-      <h2>💰 客户计费（按单 / 次数包 / 会员）</h2>
-      <div class="hot-actions">
-        <button class="ghost" id="credits-refresh">🔄 刷新</button>
-      </div>
-    </div>
-    <div class="bill-row">
-      <label>客户名（微信昵称/闲鱼ID）
-        <input type="text" id="bill-name" placeholder="如：阿花">
-      </label>
-      <button class="ghost" id="bill-check">🔍 查余额</button>
-    </div>
-    <div id="bill-status" class="bill-status"></div>
-    <div id="bill-packages" class="bill-packages"></div>
-    <div id="bill-all" class="bill-all"></div>
-  </section>
-
   <!-- 结果 -->
   <section class="card" id="result-card" hidden>
     <h2>✅ 交付包已生成</h2>
@@ -165,6 +123,50 @@
       <button class="ghost" id="fb-save">💾 保存反馈</button>
       <span id="fb-status" class="hint"></span>
     </div>
+  </section>
+
+  <!-- 运营工具（折叠，不干扰主流程） -->
+  <section class="card ops-section">
+    <details>
+      <summary>🛠️ 运营工具（热点雷达 / 客户计费 / 闲鱼物料）<small class="hint">接单运营用，生成图纸请用上方主流程</small></summary>
+      <div class="ops-inner">
+        <!-- 热点雷达 -->
+        <div class="ops-block">
+          <h3>🔥 热点雷达 <small class="hint">内容灵感（注：热门IP图纸仅作内部测试/内容灵感，不直接商业售卖）</small></h3>
+          <div class="hot-actions">
+            <button class="ghost" id="hot-refresh">🔄 刷新热点</button>
+            <button class="ghost" id="hot-batch">⚡ 给热点批量出图</button>
+          </div>
+          <div class="hot-manual">
+            <input type="text" id="hot-word" placeholder="手动加热点词">
+            <input type="text" id="hot-char" placeholder="角色名（可选）">
+            <select id="hot-cat">
+              <option>动画</option><option>游戏</option><option>影视</option>
+              <option>角色IP</option><option>表情包</option><option>其他</option>
+            </select>
+            <button class="mini-btn" id="hot-add">➕ 添加</button>
+          </div>
+          <div id="hot-cats" class="hot-cats"></div>
+          <div id="hot-trending" class="hot-trending"></div>
+          <div id="hot-gallery" class="hot-gallery"></div>
+        </div>
+
+        <!-- 计费 -->
+        <div class="ops-block">
+          <h3>💰 客户计费（按单 / 次数包 / 会员）</h3>
+          <div class="bill-row">
+            <label>客户名（微信昵称/闲鱼ID）
+              <input type="text" id="bill-name" placeholder="如：阿花">
+            </label>
+            <button class="ghost" id="bill-check">🔍 查余额</button>
+            <button class="ghost" id="credits-refresh">🔄 刷新</button>
+          </div>
+          <div id="bill-status" class="bill-status"></div>
+          <div id="bill-packages" class="bill-packages"></div>
+          <div id="bill-all" class="bill-all"></div>
+        </div>
+      </div>
+    </details>
   </section>
 </main>
 

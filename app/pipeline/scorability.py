@@ -137,3 +137,126 @@ def info_card_text(info, brand="Mard"):
         f"参考色卡: {brand}",
     ]
     return "\n".join(lines)
+
+def diagnostic_report(grid_rgb, width, height, max_colors, face_regions=None):
+    """图纸诊断报告（核心卖点）: 清晰度/孤立点/色数/五官保留/可拼性/返工点
+    返回结构化诊断 + 可读文本
+    """
+    import numpy as np
+    from collections import Counter
+    n = len(grid_rgb)
+    colors = Counter(grid_rgb)
+    color_count = len(colors)
+
+    # 1. 清晰度: 色块纯净度（孤立点比例）
+    isolated = 0
+    for y in range(height):
+        for x in range(width):
+            i = y * width + x
+            c = grid_rgb[i]
+            nb = set()
+            for dy, dx in ((1,0),(-1,0),(0,1),(0,-1)):
+                ny, nx = y+dy, x+dx
+                if 0 <= ny < height and 0 <= nx < width:
+                    nb.add(grid_rgb[ny*width+nx])
+            if len(nb) >= 3 and all(n != c for n in nb):
+                isolated += 1
+    iso_ratio = isolated / n if n else 0
+    clarity = "清晰" if iso_ratio < 0.01 else ("基本清晰" if iso_ratio < 0.03 else "偏碎需清理")
+
+    # 2. 色数评估
+    if color_count <= 8:
+        color_eval = "少(好拼)"
+    elif color_count <= 12:
+        color_eval = "适中(推荐)"
+    elif color_count <= 18:
+        color_eval = "多(精细)"
+    else:
+        color_eval = "过多(费材料)"
+
+    # 3. 五官保留（若有面部区域）
+    face_score = None
+    if face_regions and face_regions.get("eyes"):
+        # 检查眼睛区域是否有深色瞳孔格
+        eye_dark = 0
+        eye_total = 0
+        for (x0, y0, x1, y1) in face_regions["eyes"]:
+            for y in range(max(0,y0), min(height,y1)):
+                for x in range(max(0,x0), min(width,x1)):
+                    i = y*width+x
+                    eye_total += 1
+                    if sum(grid_rgb[i]) < 200:  # 深色=瞳孔/高光轮廓
+                        eye_dark += 1
+        if eye_total > 0:
+            face_score = "保留" if eye_dark > 0 else "可能丢失"
+        else:
+            face_score = "区域未覆盖"
+
+    # 4. 连续区域（大色块比例）
+    visited = set()
+    big_blocks = 0
+    for i in range(n):
+        if i in visited:
+            continue
+        color = grid_rgb[i]
+        stack = [i]
+        size = 0
+        while stack:
+            ci = stack.pop()
+            if ci in visited or grid_rgb[ci] != color:
+                continue
+            visited.add(ci)
+            size += 1
+            r, c = divmod(ci, width)
+            for dr, dc in ((1,0),(-1,0),(0,1),(0,-1)):
+                nr, nc = r+dr, c+dc
+                if 0 <= nr < height and 0 <= nc < width:
+                    stack.append(nr*width+nc)
+        if size >= 4:  # 大色块 >= 2x2
+            big_blocks += 1
+    big_ratio = big_blocks / n if n else 0
+
+    # 5. 可拼性总分
+    sc = score_pattern(grid_rgb, width, height, max_colors)
+
+    # 6. 返工点（预计问题）
+    rework = []
+    if iso_ratio > 0.02:
+        rework.append(f"孤立点 {isolated} 个可能显脏")
+    if color_count > 18:
+        rework.append(f"颜色 {color_count} 种偏多，找色费时")
+    if face_score == "可能丢失":
+        rework.append("眼睛/五官可能不清晰")
+    if big_ratio < 0.05:
+        rework.append("大色块少，拼起来碎")
+
+    report = {
+        "clarity": clarity,
+        "isolated_pixels": isolated,
+        "isolated_ratio": round(iso_ratio * 100, 1),
+        "color_count": color_count,
+        "color_eval": color_eval,
+        "face_preserved": face_score,
+        "big_blocks": big_blocks,
+        "big_ratio": round(big_ratio * 100, 1),
+        "scorability": sc,
+        "rework_points": rework,
+    }
+    return report
+
+def diagnostic_text(report):
+    """诊断报告文本（交付/展示用）"""
+    sc = report["scorability"]
+    lines = [
+        "【图纸诊断报告】",
+        f"• 可拼性评分: {sc['score']}/100（{sc['verdict']}）",
+        f"• 清晰度: {report['clarity']}（孤立点 {report['isolated_pixels']} 个 / {report['isolated_ratio']}%）",
+        f"• 色数: {report['color_count']} 色（{report['color_eval']}）",
+        f"• 五官保留: {report['face_preserved'] or 'N/A'}",
+        f"• 大色块: {report['big_blocks']} 块（{report['big_ratio']}%）",
+    ]
+    if report["rework_points"]:
+        lines.append(f"• 可能返工点: {'；'.join(report['rework_points'])}")
+    else:
+        lines.append("• 可能返工点: 无，图纸质量良好")
+    return "\n".join(lines)

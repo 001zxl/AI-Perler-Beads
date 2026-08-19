@@ -154,7 +154,7 @@ async function generate() {
   fd.append("bead", $("bead").value);
   fd.append("subject", $("subject").value || "宠物");
   fd.append("title", $("title").value || "");
-  fd.append("qc", $("qc").checked ? "true" : "false");
+  fd.append("do_qc", $("qc").checked ? "true" : "false");
 
   setFill(30); $("status-text").textContent = "AI 像素化中（约 30-60 秒）…";
   try {
@@ -182,7 +182,7 @@ async function generate() {
         fd2.append("colorcard", $("colorcard").value);
         fd2.append("bead", $("bead").value);
         fd2.append("subject", $("subject").value || "宠物");
-        fd2.append("qc", $("qc").checked ? "true" : "false");
+        fd2.append("do_qc", $("qc").checked ? "true" : "false");
         const r2 = await fetch("/api/generate", { method: "POST", body: fd2 });
         const res2 = await r2.json();
         if (res2.success) appendResult(res2);

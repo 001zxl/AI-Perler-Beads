@@ -147,6 +147,18 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
         except Exception as e:
             steps["S5.5"] = f"评分跳过: {str(e)[:50]}"
 
+        # ---- 图纸诊断报告（核心卖点：区别免费工具）----
+        try:
+            from pipeline.scorability import diagnostic_report, diagnostic_text
+            diag = diagnostic_report(grid_rgb, W, H, max_colors, face_regions)
+            meta["diagnostic"] = diag
+            diag_path = os.path.join(order_dir, "delivery", "3.6_图纸诊断报告.txt")
+            with open(diag_path, "w", encoding="utf-8") as f:
+                f.write(diagnostic_text(diag))
+            steps["S5.7"] = f"诊断报告: {diag['clarity']}, {diag['color_count']}色, 返工点{len(diag['rework_points'])}个"
+        except Exception as e:
+            steps["S5.7"] = f"诊断跳过: {str(e)[:50]}"
+
         # ---- PDF 打印版导出（施工图+色卡+信息 3页）----
         try:
             from pipeline.pdf_export import export_pdf

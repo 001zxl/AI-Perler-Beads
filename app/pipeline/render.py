@@ -6,21 +6,33 @@ import os
 FONT_DIR = "/System/Library/Fonts"
 _FONT_CACHE = {}
 
+# 中文字体优先（否则中文标题显示方框）
+_CN_FONT_CANDIDATES = [
+    os.path.join("/System/Library/Fonts", "PingFang.ttc"),
+    os.path.join("/System/Library/Fonts", "Hiragino Sans GB.ttc"),
+    os.path.join("/System/Library/Fonts", "STHeiti Medium.ttc"),
+    os.path.join("/System/Library/Fonts", "Supplemental", "Arial Unicode.ttf"),
+    os.path.join("/System/Library/Fonts", "Supplemental", "Songti.ttc"),
+]
+
 def _get_font(size, bold=False):
     key = (size, bold)
     if key in _FONT_CACHE:
         return _FONT_CACHE[key]
-    candidates = []
-    if bold:
-        candidates = [
-            os.path.join(FONT_DIR, "Supplemental", "Arial Bold.ttf"),
-            os.path.join(FONT_DIR, "Helvetica.ttc"),
-        ]
-    else:
-        candidates = [
-            os.path.join(FONT_DIR, "Supplemental", "Arial.ttf"),
-            os.path.join(FONT_DIR, "Helvetica.ttc"),
-        ]
+    # 中文字体优先
+    for p in _CN_FONT_CANDIDATES:
+        if os.path.exists(p):
+            try:
+                font = ImageFont.truetype(p, size)
+                _FONT_CACHE[key] = font
+                return font
+            except Exception:
+                continue
+    # 兜底 Arial/Helvetica
+    candidates = [
+        os.path.join(FONT_DIR, "Supplemental", "Arial Bold.ttf" if bold else "Arial.ttf"),
+        os.path.join(FONT_DIR, "Helvetica.ttc"),
+    ]
     font = None
     for p in candidates:
         if os.path.exists(p):

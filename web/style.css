@@ -110,6 +110,13 @@ footer { text-align: center; color: #aaa; font-size: 12px; margin-top: 30px; }
 .lessons { background: #fffbe8; border: 1px solid #f0d97a; border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
 .lessons-title { font-weight: 700; font-size: 14px; margin-bottom: 6px; color: #8a6d1a; }
 .lesson-item { font-size: 13px; color: #6b5513; margin-top: 4px; }
+.ops-section summary { cursor: pointer; font-size: 16px; font-weight: 700; padding: 6px 0; }
+.ops-inner { margin-top: 12px; display: flex; flex-direction: column; gap: 16px; }
+.ops-block { border: 1px solid #eee; border-radius: 10px; padding: 14px; }
+.ops-block h3 { font-size: 14px; margin-bottom: 10px; }
+.tune-panel { margin-top: 18px; border-top: 2px solid #eee; padding-top: 14px; }
+.tune-row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+#tune-status { margin-left: 10px; }
 .feedback-panel { margin-top: 22px; border-top: 2px solid #eee; padding-top: 16px; }
 .feedback-panel h3 { font-size: 15px; margin-bottom: 4px; }
 .fb-row { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 10px; }

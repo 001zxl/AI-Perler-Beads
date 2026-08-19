@@ -39,8 +39,10 @@ def export_pdf(sheet_path, palette_path, info_text, out_path):
     # 第3页: 图纸信息
     page3 = Image.new("RGB", a4, "white")
     draw = ImageDraw.Draw(page3)
-    font = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial.ttf", 32)
-    font_title = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial Bold.ttf", 44)
+    import sys as _s3; _s3.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from pipeline.render import _get_font as _cnfont3
+    font = _cnfont3(32)
+    font_title = _cnfont3(44, bold=True)
     draw.text((60, 60), "图纸信息", font=font_title, fill="black")
     y = 160
     for line in info_text.split("\n"):
