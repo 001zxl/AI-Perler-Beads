@@ -117,13 +117,7 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
         mapper = OklabColorMapper(colorcard, style.get("palette", "standard"))
         steps["S3"] = f"{colorcard} 色卡映射完成 (Oklab)"
 
-        # ---- S4 施工图 ----
-        sheet = render_construction_sheet(grid_rgb, W, H, mapper, title=title, bead_size=bead)
-        sheet_path = os.path.join(order_dir, "delivery", "1_施工主图.png")
-        sheet.save(sheet_path)
-        steps["S4"] = "施工主图完成"
-
-        # ---- S5 统计 + CSV ----
+        # ---- S5 统计 + CSV（先算，供施工图底部色卡区用）----
         rows, total = compute_stats(grid_rgb, mapper)
         palette_sheet = render_palette_sheet(rows, total, W, H, mapper.brand)
         palette_path = os.path.join(order_dir, "delivery", "2_色卡与用量统计.png")
@@ -132,20 +126,31 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
         write_shopping_csv(rows, total, W, H, mapper.brand, csv_path, mapper=mapper)
         steps["S5"] = f"{len(rows)} 色, 共 {total} 颗, 采购清单 CSV 完成"
 
-        # ---- S5.5 可拼性评分 + 图纸信息卡 ----
+        # ---- S5.5 可拼性评分（供施工图角标）----
         try:
             from pipeline.scorability import score_pattern, pattern_info, info_card_text
             sc = score_pattern(grid_rgb, W, H, max_colors)
             pinfo = pattern_info(grid_rgb, W, H, bead, difficulty=tier.get("difficulty", {}).get("level", "标准"))
             meta["scorability"] = sc
             meta["pattern_info"] = pinfo
-            # 信息卡写入交付
             info_path = os.path.join(order_dir, "delivery", "3.5_图纸信息.txt")
             with open(info_path, "w", encoding="utf-8") as f:
                 f.write(info_card_text(pinfo, mapper.brand))
             steps["S5.5"] = f"可拼性评分 {sc['score']} 分 ({sc['verdict']})"
         except Exception as e:
+            sc = None
             steps["S5.5"] = f"评分跳过: {str(e)[:50]}"
+
+        # ---- S4 施工图（对标专业图纸：四参数标题+色卡用量+制作建议）----
+        from pipeline.suggestions import build_suggestions
+        sugg = build_suggestions(meta.get("img_type", "默认"), mapper, rows, total)
+        sheet = render_construction_sheet(grid_rgb, W, H, mapper, title=title, bead_size=bead,
+                                          color_rows=rows, suggestions=sugg,
+                                          scorability=sc, subject=subject,
+                                          img_type=meta.get("img_type", "默认"))
+        sheet_path = os.path.join(order_dir, "delivery", "1_施工主图.png")
+        sheet.save(sheet_path)
+        steps["S4"] = "施工主图完成(专业版)"
 
         # ---- 图纸诊断报告（核心卖点：区别免费工具）----
         try:
