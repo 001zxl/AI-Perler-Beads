@@ -33,15 +33,33 @@ def global_quantize(grid_rgb, max_colors):
     palette = q.getpalette()
     return [(palette[i*3], palette[i*3+1], palette[i*3+2]) for i in q.getdata()]
 
-def _dominant_color(cell_rgb):
-    """主导色提取：区域内出现频率最高的 RGB（避免均值池化的灰色毛边）
-    使用 5-bit 量化投票，抗噪且快"""
+def _dominant_color(cell_rgb, protect_key=True):
+    """特征保留主导色提取（Jett-Wu 思路）：
+    区域内出现频率最高的 RGB，但保护小面积关键色（高饱和/深色/极端亮色）
+    —— 防止眼睛高光、粉鼻子、Logo文字等小特征被大面积色挤掉
+    """
     arr = np.asarray(cell_rgb, dtype=np.int32)
     # 5-bit 量化 (32 levels per channel) 后投票
     quantized = (arr // 8) * 8
     keys = quantized[:, 0] << 16 | quantized[:, 1] << 8 | quantized[:, 2]
     counts = Counter(keys)
-    top_key = counts.most_common(1)[0][0]
+    if not protect_key:
+        top_key = counts.most_common(1)[0][0]
+        return (int(top_key >> 16 & 0xFF), int(top_key >> 8 & 0xFF), int(top_key & 0xFF))
+    # 保护关键色：高饱和 / 深色 / 非常亮
+    def _is_key(rgb):
+        r, g, b = rgb
+        mx, mn = max(r, g, b), min(r, g, b)
+        sat = (mx - mn) / 255.0 if mx > 0 else 0
+        bright = mx / 255.0
+        return sat > 0.6 or bright < 0.25 or bright > 0.92  # 高饱和/深色/高光
+    # 先找关键色（即使占比小也优先）
+    key_candidates = [k for k in counts if _is_key((k >> 16 & 0xFF, k >> 8 & 0xFF, k & 0xFF))]
+    if key_candidates:
+        # 取关键色中占比最高的（保护眼睛/鼻子/文字）
+        top_key = max(key_candidates, key=lambda k: counts[k])
+    else:
+        top_key = counts.most_common(1)[0][0]
     return (int(top_key >> 16 & 0xFF), int(top_key >> 8 & 0xFF), int(top_key & 0xFF))
 
 def quantize_grid(img, width_cells, height_cells="auto", max_colors=16, use_dominant=True):
@@ -82,7 +100,14 @@ def color_counts(grid_rgb):
     """每色数量统计: {rgb: count}"""
     return dict(Counter(grid_rgb))
 
-def remove_isolated_pixels(grid_rgb, width, height, min_cluster=3):
+def remove_isolated_pixels(grid_rgb, width, height, min_cluster=3, protected=None):
+    """孤立噪点清理（用户要求：少于 2-3 颗的小色块自动合并）：
+    1. 单格噪点: 被 3 个以上不同色包围的格 → 众数替换
+    2. 小色块: 面积 < min_cluster(默认3) 的连通区域 → 合并到相邻主色
+    protected: 需要保护的格子集合（眼睛/鼻口等），这些格不参与清理
+    借鉴 proper-pixel-art 的网格采样修正思路。
+    返回清理后的 grid
+    """
     """孤立噪点清理（用户要求：少于 2-3 颗的小色块自动合并）：
     1. 单格噪点: 被 3 个以上不同色包围的格 → 众数替换
     2. 小色块: 面积 < min_cluster(默认3) 的连通区域 → 合并到相邻主色
@@ -182,7 +207,11 @@ def simplify_small_regions(grid_rgb, width, height, min_area=3, protect_pink=Tru
                     changed += 1
     return grid_rgb, changed
 
-def bfs_cleanup(grid_rgb, width, height, threshold=18):
+def bfs_cleanup(grid_rgb, width, height, threshold=18, protected=None):
+    """BFS 连通区域杂色清理（借鉴 perler-beads）:
+    孤立的小色块（面积 < min_area）若与邻域色距 < threshold，合并到相邻主色
+    protected: 需要保护的格子集合（眼睛/鼻口等），这些格不参与合并
+    """
     """BFS 连通区域杂色清理（借鉴 perler-beads）:
     孤立的小色块（面积 < min_area）若与邻域色距 < threshold，合并到相邻主色
     提升色块纯净度，消除噪点"""

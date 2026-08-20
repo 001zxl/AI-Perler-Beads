@@ -111,12 +111,14 @@ def render_construction_sheet(grid_rgb, width, height, color_map, title="拼豆�
     for y in range(height):
         for x in range(width):
             rgb = grid_rgb[y * width + x]
-            code, name, _, _ = _lookup(color_map, rgb)
+            code, name, orig_rgb, _ = _lookup(color_map, rgb)
             px0, py0 = gx0 + x * cell_px, gy0 + y * cell_px
-            draw.rectangle([px0, py0, px0 + cell_px - 1, py0 + cell_px - 1], fill=rgb)
+            # 用映射后的真实色号色填色（与采购清单一致，预览即实物色）
+            fill_rgb = orig_rgb if orig_rgb is not None else rgb
+            draw.rectangle([px0, py0, px0 + cell_px - 1, py0 + cell_px - 1], fill=tuple(fill_rgb))
             # 居中色号
             code_font = _get_font(max(10, cell_px // 4), bold=True)
-            text_color = _contrast(rgb)
+            text_color = _contrast(fill_rgb)
             halo = (30, 30, 30) if text_color == (255, 255, 255) else (255, 255, 255)
             tw = draw.textlength(code, font=code_font)
             tx = px0 + (cell_px - tw) / 2

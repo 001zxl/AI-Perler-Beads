@@ -28,4 +28,5 @@ def zip_delivery(order_dir, delivery_dir, order_id):
     return zip_path
 
 def new_order_id():
-    return datetime.now().strftime("order_%Y%m%d_%H%M%S")
+    import random
+    return datetime.now().strftime("order_%Y%m%d_%H%M%S") + f"_{random.randint(100,999)}"

@@ -10,7 +10,7 @@ import json
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config
-from pipeline.run import run_order
+from pipeline.run import run_order, run_order_with_qc_retry
 
 def main():
     import argparse

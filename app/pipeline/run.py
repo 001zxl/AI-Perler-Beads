@@ -28,6 +28,12 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
     """
     orders_root = orders_root or config.ORDERS_DIR
     tier = config.TIERS.get(tier_key, config.TIERS["主力款"])
+    # 按图片类型推荐规格（宠物/人像高规格保留五官）
+    try:
+        from pipeline.type_aware import TYPE_STRATEGIES
+        _strat = TYPE_STRATEGIES.get(meta_img_type_hint, {}) if False else {}
+    except Exception:
+        _strat = {}
     width = width or tier["width"]
     if isinstance(width, list):
         width = width[0]
@@ -51,28 +57,41 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
     }
     steps = {}
     try:
-        # ---- S0 图片类型识别（用于轮廓/卡通化/关键区域策略）----
+        # ---- S0 图片类型识别（用于轮廓/卡通化/关键区域/规格策略）----
         img_type = "默认"
         try:
-            from pipeline.type_aware import detect_type
+            from pipeline.type_aware import detect_type, TYPE_STRATEGIES
             if not skip_ai:
                 img_type, _subj, _areas = detect_type(source_path)
                 meta["img_type"] = img_type
+            # 按类型应用推荐规格（仅在用户未显式指定时）
+            strat = TYPE_STRATEGIES.get(img_type, {})
+            if width is None and strat.get("recommended_width"):
+                width = strat["recommended_width"]
+            if max_colors is None and strat.get("max_colors_default"):
+                max_colors = strat["max_colors_default"]
         except Exception:
             pass
 
-        # ---- S1 AI 像素化 ----
+        # ---- S1 像素化（默认非 AI 还原模式，AI 仅用于卡通化风格）----
         pixel_path = os.path.join(order_dir, "intermediate", "pixel_base.png")
-        if skip_ai or not os.path.exists(source_path):
-            # 无 AI：直接用原图（或已有像素图）量化
+        # 卡通化风格（需要 AI 重绘）：chibi_pastel / kawaii / popart / vaporwave
+        cartoonize_styles = ("chibi_pastel", "kawaii", "popart", "vaporwave", "crayon", "comic")
+        need_ai = (not skip_ai) and style_id in cartoonize_styles
+        if not need_ai or not os.path.exists(source_path):
+            # 非 AI 还原模式（默认）：直接用原图确定性量化，保留主体特征
             work_img = source_path
+            steps["S1"] = "还原模式(确定性量化，无AI重绘)"
         else:
             ok, res = pixelate(source_path, pixel_path, style_id=style_id, width=width,
                                max_colors=max_colors, extra_subject=extra_subject)
             if not ok:
-                return {"success": False, "step": "S1", "error": res, "order_id": order_id}
-            steps["S1"] = res
-            work_img = pixel_path
+                # AI 失败降级到还原模式，不阻塞
+                work_img = source_path
+                steps["S1"] = f"AI失败降级还原模式: {res[:60]}"
+            else:
+                steps["S1"] = res
+                work_img = pixel_path
 
         # ---- S2 量化 ----
         from PIL import Image
@@ -85,21 +104,28 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
         # 主导色后全局量化到 max_colors（防止每格独立采样导致色数爆炸）
         if len(set(grid_rgb)) > max_colors:
             grid_rgb = global_quantize(grid_rgb, max_colors)
-        # 面部关键点保护（眼睛/鼻口，AI 定位）
+        # 面部关键点保护（眼睛/鼻口，AI 定位）——先定位，保护格在清理时跳过
         face_regions = {}
+        protected_cells = set()
         try:
             from pipeline.face_guard import detect_face_regions, apply_face_guard
             if not skip_ai:
                 face_regions = detect_face_regions(work_img, W, H)
         except Exception:
             face_regions = {}
-        # 孤立噪点清理（解决细节碎/毛发脏）
-        grid_rgb, _iso = remove_isolated_pixels(grid_rgb, W, H)
-        # 面部保护：眼睛区域跳过清理 + 鼻口简化
+        # 面部保护：先计算保护格 + 鼻口简化
         if face_regions:
-            grid_rgb, _protected = apply_face_guard(grid_rgb, W, H, face_regions)
-        # BFS 连通区域杂色清理（借鉴 perler-beads，提升色块纯净度）
-        grid_rgb = bfs_cleanup(grid_rgb, W, H, threshold=18)
+            grid_rgb, protected_cells = apply_face_guard(grid_rgb, W, H, face_regions)
+        # 孤立噪点清理（保护格跳过，不洗掉眼睛/鼻口特征）
+        try:
+            grid_rgb, _iso = remove_isolated_pixels(grid_rgb, W, H, protected=protected_cells)
+        except TypeError:
+            grid_rgb, _iso = remove_isolated_pixels(grid_rgb, W, H)
+        # BFS 连通区域杂色清理（保护格跳过）
+        try:
+            grid_rgb = bfs_cleanup(grid_rgb, W, H, threshold=18, protected=protected_cells)
+        except TypeError:
+            grid_rgb = bfs_cleanup(grid_rgb, W, H, threshold=18)
         # 鼻口小区域简化（粉鼻子保护）
         grid_rgb, _sm = simplify_small_regions(grid_rgb, W, H, min_area=3)
         # 类型感知轮廓加粗（动漫/Logo 黑边、宠物深棕边）

@@ -13,9 +13,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 TYPE_STRATEGIES = {
     "宠物": {
         "key_points": ["眼睛", "耳朵", "鼻子", "嘴巴"],
-        "max_colors_default": 12,
+        "max_colors_default": 18,
+        "recommended_width": 80,
+        "min_width": 60,
         "outline": "medium",
-        "notes": "眼睛提亮+鼻口简化+毛色抽象成方向性斑纹",
+        "notes": "眼睛提亮+鼻口简化+毛色抽象成方向性斑纹；高规格保留五官",
         "suggested_styles": ["classic", "pixel_pet", "chibi_pastel"],
     },
     "动漫": {
@@ -27,9 +29,11 @@ TYPE_STRATEGIES = {
     },
     "真人": {
         "key_points": ["眼睛", "鼻梁", "嘴巴", "手势"],
-        "max_colors_default": 12,
+        "max_colors_default": 24,
+        "recommended_width": 100,
+        "min_width": 70,
         "outline": "soft",
-        "notes": "默认半身/头像，肤色减色阶，先卡通化再拼豆，手势单独保护",
+        "notes": "默认半身/头像，肤色减色阶，先卡通化再拼豆，手势单独保护；高规格保五官",
         "suggested_styles": ["classic", "watercolor", "dither"],
         "cartoonize_first": True,
     },
