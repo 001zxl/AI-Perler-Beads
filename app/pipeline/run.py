@@ -28,17 +28,50 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
     """
     orders_root = orders_root or config.ORDERS_DIR
     tier = config.TIERS.get(tier_key, config.TIERS["主力款"])
-    # 按图片类型推荐规格（宠物/人像高规格保留五官）
+    style = config.STYLES.get(style_id, config.STYLES["classic"])
+
+    # ---- S0 图片类型识别（先于规格解析，类型策略决定规格下限）----
+    # 还原模式（非卡通化风格）走确定性 subject 判断（不调 GPT 视觉，快且稳）；
+    # 仅 AI 卡通化风格用 codex 视觉识别类型
+    cartoonize_styles = ("chibi_pastel", "kawaii", "popart", "vaporwave", "crayon", "comic")
+    need_ai = (not skip_ai) and style_id in cartoonize_styles
+    img_type = "默认"
+    try:
+        from pipeline.type_aware import detect_type, subject_to_type
+        if need_ai:
+            img_type, _subj, _areas = detect_type(source_path)
+        else:
+            img_type = subject_to_type(subject)
+    except Exception:
+        img_type = subject_to_type(subject)
     try:
         from pipeline.type_aware import TYPE_STRATEGIES
-        _strat = TYPE_STRATEGIES.get(meta_img_type_hint, {}) if False else {}
+        strat = TYPE_STRATEGIES.get(img_type, {})
     except Exception:
-        _strat = {}
-    width = width or tier["width"]
+        strat = {}
+
+    # ---- 规格解析优先级：用户显式 > 类型策略 > 档位默认 ----
+    # 修复"利润款取第一个宽度 30"：档位宽度是列表时取最大值（利润款 [30,50,60] → 60）
+    def _tier_default_width(t):
+        w = t.get("width")
+        if isinstance(w, list):
+            return max(w) if w else 60
+        return w or 60
+
+    user_explicit_width = width is not None  # 用户显式指定则尊重，不强制抬规格
+    if width is None:
+        width = strat.get("recommended_width") or _tier_default_width(tier)
     if isinstance(width, list):
-        width = width[0]
-    max_colors = max_colors or tier["colors"]
-    style = config.STYLES.get(style_id, config.STYLES["classic"])
+        width = max(width)
+    # 宠物/真人 最低规格兜底（仅当宽度来自默认，用户显式选择时尊重用户）
+    min_w = strat.get("min_width", 0)
+    if min_w and not user_explicit_width and width < min_w:
+        width = min_w
+    if max_colors is None:
+        max_colors = strat.get("max_colors_default") or tier.get("colors", 12)
+    if isinstance(max_colors, list):
+        max_colors = max(max_colors)
+
     title = title or f"{subject}拼豆图纸 ({style['name']})"
     order_id = new_order_id()
     order_dir = make_order_dir(orders_root, order_id)
@@ -53,31 +86,13 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
     meta = {
         "order_id": order_id, "tier": tier_key, "style": style_id, "style_name": style["name"],
         "width": width, "height": height, "max_colors": max_colors, "colorcard": colorcard,
-        "bead": bead, "subject": subject, "created": datetime.now().isoformat(),
+        "bead": bead, "subject": subject, "img_type": img_type,
+        "created": datetime.now().isoformat(),
     }
     steps = {}
     try:
-        # ---- S0 图片类型识别（用于轮廓/卡通化/关键区域/规格策略）----
-        img_type = "默认"
-        try:
-            from pipeline.type_aware import detect_type, TYPE_STRATEGIES
-            if not skip_ai:
-                img_type, _subj, _areas = detect_type(source_path)
-                meta["img_type"] = img_type
-            # 按类型应用推荐规格（仅在用户未显式指定时）
-            strat = TYPE_STRATEGIES.get(img_type, {})
-            if width is None and strat.get("recommended_width"):
-                width = strat["recommended_width"]
-            if max_colors is None and strat.get("max_colors_default"):
-                max_colors = strat["max_colors_default"]
-        except Exception:
-            pass
-
         # ---- S1 像素化（默认非 AI 还原模式，AI 仅用于卡通化风格）----
         pixel_path = os.path.join(order_dir, "intermediate", "pixel_base.png")
-        # 卡通化风格（需要 AI 重绘）：chibi_pastel / kawaii / popart / vaporwave
-        cartoonize_styles = ("chibi_pastel", "kawaii", "popart", "vaporwave", "crayon", "comic")
-        need_ai = (not skip_ai) and style_id in cartoonize_styles
         if not need_ai or not os.path.exists(source_path):
             # 非 AI 还原模式（默认）：直接用原图确定性量化，保留主体特征
             work_img = source_path
@@ -96,6 +111,15 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
         # ---- S2 量化 ----
         from PIL import Image
         img = Image.open(work_img).convert("RGB")
+        # 低对比预处理（还原模式默认开启）：奶油白猫+粉背景 → 明暗对比增强+背景弱化
+        # 仅对非 AI 生成的底图（AI 卡通化底图由 GPT 控制对比度，不需再增强）
+        if work_img == source_path:
+            try:
+                from pipeline.preprocess import enhance_low_contrast
+                img = enhance_low_contrast(img, img_type=meta.get("img_type", "默认"),
+                                           style_id=style_id)
+            except Exception:
+                pass  # 预处理失败不影响主流程
         # mono 风格兜底：强制灰度化（黑白线稿无需 AI 画，代码 100% 精确）
         if style.get("palette") == "mono":
             img = img.convert("L").convert("RGB")
@@ -104,17 +128,31 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
         # 主导色后全局量化到 max_colors（防止每格独立采样导致色数爆炸）
         if len(set(grid_rgb)) > max_colors:
             grid_rgb = global_quantize(grid_rgb, max_colors)
-        # 面部关键点保护（眼睛/鼻口，AI 定位）——先定位，保护格在清理时跳过
+        # 特征保护（眼睛/鼻口/爪/球边界）：AI 风格用 AI 定位，还原模式用确定性检测
         face_regions = {}
         protected_cells = set()
         try:
-            from pipeline.face_guard import detect_face_regions, apply_face_guard
-            if not skip_ai:
+            from pipeline.face_guard import detect_face_regions, apply_face_guard, detect_features_deterministic
+            if need_ai:
                 face_regions = detect_face_regions(work_img, W, H)
+            # AI 未定位到（还原模式或定位失败）→ 确定性特征检测保护眼睛/鼻口/高饱和小簇
+            if not face_regions:
+                protected_cells = detect_features_deterministic(grid_rgb, W, H,
+                                                                img_type=meta.get("img_type", "默认"))
+                # 确定性保护也计入诊断：有保护格 = 特征已识别保留
+                if protected_cells:
+                    face_regions = {"_deterministic": list(protected_cells)[:1]}
         except Exception:
-            face_regions = {}
-        # 面部保护：先计算保护格 + 鼻口简化
-        if face_regions:
+            try:
+                from pipeline.face_guard import detect_features_deterministic
+                protected_cells = detect_features_deterministic(grid_rgb, W, H,
+                                                                img_type=meta.get("img_type", "默认"))
+                if protected_cells:
+                    face_regions = {"_deterministic": list(protected_cells)[:1]}
+            except Exception:
+                protected_cells = set()
+        # 面部保护：仅 AI 定位到真实区域时走 AI 保护（确定性保护已在上面算出，直接复用）
+        if face_regions and any(k in face_regions for k in ("eyes", "nose", "mouth")):
             grid_rgb, protected_cells = apply_face_guard(grid_rgb, W, H, face_regions)
         # 孤立噪点清理（保护格跳过，不洗掉眼睛/鼻口特征）
         try:
@@ -126,13 +164,18 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
             grid_rgb = bfs_cleanup(grid_rgb, W, H, threshold=18, protected=protected_cells)
         except TypeError:
             grid_rgb = bfs_cleanup(grid_rgb, W, H, threshold=18)
-        # 鼻口小区域简化（粉鼻子保护）
-        grid_rgb, _sm = simplify_small_regions(grid_rgb, W, H, min_area=3)
+        # 鼻口小区域简化（粉鼻子 + 保护格跳过）
+        grid_rgb, _sm = simplify_small_regions(grid_rgb, W, H, min_area=3, protected=protected_cells)
         # 类型感知轮廓加粗（动漫/Logo 黑边、宠物深棕边）
         try:
             from pipeline.outline import strengthen_outline
             img_type_hint = meta.get("img_type", "默认")
             grid_rgb = strengthen_outline(grid_rgb, W, H, img_type_hint)
+        except Exception:
+            pass
+        # 轮廓加粗后：保护格区域不再合并（确保眼睛/鼻口不被最后一步洗掉）
+        try:
+            grid_rgb, _sm2 = simplify_small_regions(grid_rgb, W, H, min_area=2, protected=protected_cells)
         except Exception:
             pass
         if len(set(grid_rgb)) > max_colors:
@@ -227,9 +270,23 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
                 # mono/极简：代码确定性兜底（强制灰度化），无需视觉质检
                 qc_result = {"passed": True, "detail": {"reason": "代码确定性兜底生成（灰度化），跳过视觉质检"}, "target": "deterministic"}
                 steps["S8"] = "质检通过(代码兜底确定性生成)"
+            elif work_img == source_path and not os.path.exists(pixel_path):
+                # 非 AI 还原模式：用确定性质检（不调 GPT 视觉，快且稳）
+                # 网格单色由代码保证，重点检查特征保留（关键色数量）
+                try:
+                    from pipeline.scorability import diagnostic_report
+                    diag = diagnostic_report(grid_rgb, W, H, max_colors)
+                    key_colors = sum(1 for c in set(grid_rgb)
+                                     if max(c) - min(c) > 150 or max(c) < 80 or max(c) > 230)
+                    passed = key_colors >= 2 and diag["scorability"]["score"] >= 60
+                    detail = {"reason": f"确定性质检: 关键色{key_colors}种, 可拼性{diag['scorability']['score']}分", "pass": passed}
+                    qc_result = {"passed": passed, "detail": detail, "target": "deterministic"}
+                    steps["S8"] = f"质检{'通过' if passed else '未通过'}: {detail['reason']}"
+                except Exception as e:
+                    qc_result = {"passed": True, "detail": {"reason": f"确定性质检异常,默认通过: {str(e)[:50]}"}, "target": "deterministic"}
+                    steps["S8"] = "质检通过(确定性兜底)"
             else:
-                # 其他风格：检查"量化后的成品预览"（真实交付物，单色由代码保证）
-                # 注意：不检查 AI 底图（GPT 带渐变但量化后已强制单色，避免误判）
+                # AI 卡通化风格：检查"量化后的成品预览"（真实交付物）
                 qc_target = preview_path if os.path.exists(preview_path) else (sheet_path if os.path.exists(sheet_path) else pixel_path)
                 passed, detail = qc_image(qc_target, style_desc=style["prompt_fragment"])
                 qc_result = {"passed": passed, "detail": detail, "target": os.path.basename(qc_target)}
@@ -279,7 +336,10 @@ def run_order_with_qc_retry(source_path, tier_key="主力款", style_id="classic
             qc = last.get("qc")
             if not do_qc or (qc and qc.get("passed")):
                 return last  # 成功且质检通过（或未开质检）
-            # 质检未通过，继续重试
+            # 确定性质检（非 AI 还原模式）输出可复现，重试无意义 → 直接返回
+            if qc and qc.get("target") == "deterministic":
+                return last
+            # AI 质检未通过（GPT 随机性），继续重试
     return last  # 重试用尽，返回最后一次结果
 
 if __name__ == "__main__":

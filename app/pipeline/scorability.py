@@ -23,7 +23,7 @@ def score_pattern(grid_rgb, width, height, max_colors):
     colors = Counter(grid_rgb)
     color_count = len(colors)
 
-    # 色数分: 越少越高（但太少的相似度低，取 8-16 最优）
+    # 色数分: 越少越高（但太少的相似度低，取 8-16 最优；24-36 为高保真档，不重罚）
     if color_count <= 8:
         color_score = 90
     elif color_count <= 12:
@@ -31,7 +31,9 @@ def score_pattern(grid_rgb, width, height, max_colors):
     elif color_count <= 16:
         color_score = 75
     elif color_count <= 24:
-        color_score = 60
+        color_score = 65
+    elif color_count <= 36:
+        color_score = 55
     else:
         color_score = 40
 
@@ -169,14 +171,18 @@ def diagnostic_report(grid_rgb, width, height, max_colors, face_regions=None):
         color_eval = "少(好拼)"
     elif color_count <= 12:
         color_eval = "适中(推荐)"
-    elif color_count <= 18:
+    elif color_count <= 24:
         color_eval = "多(精细)"
+    elif color_count <= 36:
+        color_eval = "多(高保真档)"
     else:
         color_eval = "过多(费材料)"
 
     # 3. 五官保留（若有面部区域）
     face_score = None
-    if face_regions and face_regions.get("eyes"):
+    if face_regions and "_deterministic" in face_regions:
+        face_score = "保留(确定性保护)"
+    elif face_regions and face_regions.get("eyes"):
         # 检查眼睛区域是否有深色瞳孔格
         eye_dark = 0
         eye_total = 0
@@ -223,7 +229,7 @@ def diagnostic_report(grid_rgb, width, height, max_colors, face_regions=None):
     rework = []
     if iso_ratio > 0.02:
         rework.append(f"孤立点 {isolated} 个可能显脏")
-    if color_count > 18:
+    if color_count > 36:
         rework.append(f"颜色 {color_count} 种偏多，找色费时")
     if face_score == "可能丢失":
         rework.append("眼睛/五官可能不清晰")

@@ -34,8 +34,8 @@ def protect_eyes(grid_rgb, width, height, eye_regions=None):
     # 返回保护格集合（供 remove_isolated_pixels 跳过）
     return protected
 
-def detect_face_regions(image_path, grid_w, grid_h, model="qwen3-vl-plus"):
-    """AI 定位脸部关键区域（眼睛/鼻子/嘴巴）在网格中的大致位置"""
+def detect_face_regions(image_path, grid_w, grid_h):
+    """AI 定位脸部关键区域（眼睛/鼻子/嘴巴）在网格中的大致位置（codex/GPT 后端）"""
     prompt = (
         "这张图片将被转成拼豆图纸（网格约 " + str(grid_w) + "x" + str(grid_h) + "）。"
         "请定位面部关键区域在图片中的大致位置（百分比坐标 0-1，以图片左上角为原点）。"
@@ -43,17 +43,11 @@ def detect_face_regions(image_path, grid_w, grid_h, model="qwen3-vl-plus"):
         "每个区域用左上角+右下角百分比表示。没有该特征就留空数组。"
     )
     try:
-        r = subprocess.run(["bl", "vision", "describe", "--image", image_path,
-                            "--prompt", prompt, "--model", model, "--quiet"],
-                           capture_output=True, text=True, timeout=90)
-        out = r.stdout.strip()
+        from type_aware import _codex_see
+        ok, content = _codex_see(image_path, prompt)
+        if not ok:
+            return {}
         import re
-        content = out
-        try:
-            outer = json.loads(out)
-            content = outer["choices"][0]["message"]["content"]
-        except Exception:
-            pass
         m = re.search(r"\{[\s\S]*\}", content)
         if not m:
             return {}
@@ -109,3 +103,84 @@ def apply_face_guard(grid_rgb, width, height, face_regions, mapper=None):
                     grid_rgb[y * width + x] = cleaned[idx]
                     idx += 1
     return grid_rgb, protected
+
+def detect_features_deterministic(grid_rgb, width, height, img_type="默认"):
+    """确定性特征保护（无 AI 版）：不依赖 GPT 视觉，直接分析量化网格
+    保护目标（眼睛/鼻口/球边界/爪子等小特征不被清理洗掉）:
+      1. 深色小簇（眼睛/瞳孔/嘴线）: 亮度 < 110 且连通面积 1-10 格
+      2. 粉鼻子: 高亮粉（红通道高、绿蓝低）小簇
+      3. 高饱和小簇（彩色球/装饰/爪垫）: 饱和度 > 0.5 且面积 <= 12 格
+    返回 protected 格子集合（flat index）
+    """
+    import numpy as np
+    from collections import deque
+    n = len(grid_rgb)
+    if n == 0:
+        return set()
+    arr = np.array(grid_rgb, dtype=np.int32).reshape(height, width, 3)
+
+    def _is_dark(rgb):
+        return max(rgb) < 110
+
+    def _is_pink_nose(rgb):
+        r, g, b = rgb
+        return r > 190 and r > g * 1.35 and r > b * 1.15 and (r + g + b) > 400
+
+    def _is_sat(rgb):
+        mx, mn = max(rgb), min(rgb)
+        return (mx - mn) / 255.0 > 0.5 and mx > 60 and mn < 200
+
+    # 标记三类候选特征格
+    dark_mask = np.zeros((height, width), dtype=bool)
+    pink_mask = np.zeros((height, width), dtype=bool)
+    sat_mask = np.zeros((height, width), dtype=bool)
+    for y in range(height):
+        for x in range(width):
+            rgb = tuple(arr[y, x])
+            if _is_dark(rgb):
+                dark_mask[y, x] = True
+            if _is_pink_nose(rgb):
+                pink_mask[y, x] = True
+            if _is_sat(rgb):
+                sat_mask[y, x] = True
+
+    def _clusters(mask, max_area):
+        """提取连通区域（4 邻域），返回面积 <= max_area 的区域列表"""
+        visited = np.zeros_like(mask)
+        out = []
+        for y in range(height):
+            for x in range(width):
+                if not mask[y, x] or visited[y, x]:
+                    continue
+                q = deque([(y, x)])
+                visited[y, x] = True
+                region = []
+                while q:
+                    cy, cx = q.popleft()
+                    region.append((cy, cx))
+                    for dy, dx in ((1,0),(-1,0),(0,1),(0,-1)):
+                        ny, nx = cy+dy, cx+dx
+                        if 0 <= ny < height and 0 <= nx < width and mask[ny, nx] and not visited[ny, nx]:
+                            visited[ny, nx] = True
+                            q.append((ny, nx))
+                if len(region) <= max_area:
+                    out.append(region)
+        return out
+
+    protected = set()
+    # 1. 深色小簇（眼睛/瞳孔/嘴线）——宠物/真人/动漫 最需要
+    if img_type in ("宠物", "真人", "动漫", "默认"):
+        for region in _clusters(dark_mask, max_area=10):
+            for (y, x) in region:
+                protected.add(y * width + x)
+        # 2. 粉鼻子（宠物重点）
+        if img_type in ("宠物", "真人"):
+            for region in _clusters(pink_mask, max_area=8):
+                for (y, x) in region:
+                    protected.add(y * width + x)
+    # 3. 高饱和小簇（球/装饰/爪垫）——彩色特征保护
+    for region in _clusters(sat_mask, max_area=12):
+        for (y, x) in region:
+            protected.add(y * width + x)
+    return protected
+

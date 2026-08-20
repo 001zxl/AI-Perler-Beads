@@ -118,9 +118,13 @@ def remove_isolated_pixels(grid_rgb, width, height, min_cluster=3, protected=Non
     arr = np.array(grid_rgb, dtype=np.int32).reshape(height, width, 3)
     out = arr.copy()
     changed = 0
-    # Pass 1: 单格噪点（被 3 个以上不同色包围）
+    protected = protected or set()
+    # Pass 1: 单格噪点（被 3 个以上不同色包围；保护格跳过）
     for y in range(height):
         for x in range(width):
+            i = y * width + x
+            if i in protected:
+                continue  # 保护格（眼睛/鼻口）不清理
             nbs = []
             for dy, dx in ((1,0),(-1,0),(0,1),(0,-1)):
                 ny, nx = y+dy, x+dx
@@ -136,19 +140,22 @@ def remove_isolated_pixels(grid_rgb, width, height, min_cluster=3, protected=Non
                 changed += 1
     # Pass 2: 小色块（面积 < min_cluster 的连通区域）合并到相邻主色
     result = [tuple(p) for p in out.reshape(-1, 3)]
-    # 复用 simplify_small_regions 逻辑（min_area=min_cluster）
+    # 复用 simplify_small_regions 逻辑（min_area=min_cluster，保护格跳过）
     try:
         from quantize import simplify_small_regions
-        result, _ = simplify_small_regions(result, width, height, min_area=min_cluster, protect_pink=True)
+        result, _ = simplify_small_regions(result, width, height, min_area=min_cluster,
+                                           protect_pink=True, protected=protected)
     except Exception:
         pass
     return result, changed
 
-def simplify_small_regions(grid_rgb, width, height, min_area=3, protect_pink=True):
+def simplify_small_regions(grid_rgb, width, height, min_area=3, protect_pink=True, protected=None):
     """小区域简化（解决鼻口糊）：
     面积 < min_area 的同色连通小区域，若与周围色相近则合并到周围主色。
     protect_pink=True: 保护粉鼻子（高亮度低饱和粉）不被合并
+    protected: 保护格集合（眼睛/鼻口等），区域含保护格则整区跳过合并
     """
+    protected = protected or set()
     from colormap import rgb_to_oklab, delta_e_oklab
     n = len(grid_rgb)
     oklabs = {c: rgb_to_oklab(c) for c in set(grid_rgb)}
@@ -187,6 +194,9 @@ def simplify_small_regions(grid_rgb, width, height, min_area=3, protect_pink=Tru
                         stack.append((nr, nc))
             # 小区域处理
             if len(region) < min_area:
+                # 若含保护格（眼睛/鼻口）则整区保护（不合并）
+                if any(idx(rr, cc) in protected for rr, cc in region):
+                    continue
                 # 若含粉鼻子则保护（不合并）
                 if protect_pink and any(is_pink(grid_rgb[idx(rr, cc)]) for rr, cc in region):
                     continue
@@ -254,9 +264,13 @@ def bfs_cleanup(grid_rgb, width, height, threshold=18, protected=None):
                         stack.append((nr, nc))
             regions.append((color, region))
 
+    protected = protected or set()
     # 合并小区域（面积 < 12）到最近色邻居
     for color, region in regions:
         if len(region) >= 12:
+            continue
+        # 保护格所在区域整区跳过（眼睛/鼻口不参与合并）
+        if any(idx(r, c) in protected for (r, c) in region):
             continue
         # 找区域边界外的相邻格
         border_colors = []

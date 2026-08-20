@@ -12,12 +12,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 TYPE_STRATEGIES = {
     "宠物": {
-        "key_points": ["眼睛", "耳朵", "鼻子", "嘴巴"],
-        "max_colors_default": 18,
-        "recommended_width": 80,
-        "min_width": 60,
+        "key_points": ["眼睛", "耳朵", "鼻子", "嘴巴", "爪子", "球/玩具边界"],
+        "max_colors_default": 32,
+        "recommended_width": 100,
+        "min_width": 80,
         "outline": "medium",
-        "notes": "眼睛提亮+鼻口简化+毛色抽象成方向性斑纹；高规格保留五官",
+        "notes": "最低 80 宽/24-36 色保留五官；低对比图自动增强明暗；眼睛鼻口爪球边界确定性保护",
         "suggested_styles": ["classic", "pixel_pet", "chibi_pastel"],
     },
     "动漫": {
@@ -29,9 +29,9 @@ TYPE_STRATEGIES = {
     },
     "真人": {
         "key_points": ["眼睛", "鼻梁", "嘴巴", "手势"],
-        "max_colors_default": 24,
+        "max_colors_default": 32,
         "recommended_width": 100,
-        "min_width": 70,
+        "min_width": 80,
         "outline": "soft",
         "notes": "默认半身/头像，肤色减色阶，先卡通化再拼豆，手势单独保护；高规格保五官",
         "suggested_styles": ["classic", "watercolor", "dither"],
@@ -97,3 +97,26 @@ def detect_type(image_path, model=None):
 def get_strategy(img_type):
     """获取类型策略"""
     return TYPE_STRATEGIES.get(img_type, TYPE_STRATEGIES["宠物"])
+
+def subject_to_type(subject):
+    """按 subject 关键词确定性判断类型（无 AI 兜底，供 skip_ai 模式用）"""
+    if not subject:
+        return "默认"
+    s = str(subject)
+    pet_kw = ("猫", "狗", "宠物", "兔", "仓鼠", "鹦鹉", "豚鼠", "柯基", "布偶", "橘", "狸花", "奶")
+    human_kw = ("人", "情侣", "宝宝", "小孩", "头像", "写真", "婚纱")
+    anime_kw = ("动漫", "卡通", "角色", "二次元", "手办")
+    logo_kw = ("logo", "Logo", "标志", "徽章", "文字")
+    scene_kw = ("风景", "山", "海", "天空", "建筑", "城市")
+    for kw in pet_kw:
+        if kw in s: return "宠物"
+    for kw in human_kw:
+        if kw in s: return "真人"
+    for kw in anime_kw:
+        if kw in s: return "动漫"
+    for kw in logo_kw:
+        if kw in s: return "Logo"
+    for kw in scene_kw:
+        if kw in s: return "风景"
+    return "默认"
+
