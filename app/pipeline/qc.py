@@ -6,13 +6,14 @@ import subprocess
 import json
 
 QC_PROMPT = (
-    "这是一张AI生成的拼豆像素底图（将用于制作拼豆施工图纸）。"
+    "这是一张拼豆成品的预览图（已经量化处理，每格应该是单一纯色）。"
     "请严格检查以下四项，逐项回答 通过/不通过 并给出理由，最后一行输出 JSON: "
     '{"pixel_ok": true/false, "mono_ok": true/false, "detail_ok": true/false, "style_ok": true/false, "pass": true/false, "reason": "简述"}。'
-    "检查项: 1)pixel_ok 是否已经是像素化/块状化的拼豆风格（而非平滑照片或插画）; "
-    "2)mono_ok 每个像素块是否为单一纯色、无渐变晕染; "
-    "3)detail_ok 主体（脸/五官等关键细节）是否完整可辨、未被像素化破坏; "
-    "4)style_ok 是否符合要求的风格（如深色霓虹/马卡龙/8bit等）。"
+    "检查项: 1)pixel_ok 是否呈现出拼豆/马赛克风格（由方块颗粒组成，而非平滑照片）; "
+    "2)mono_ok 每个颗粒是否为单一纯色、无明显渐变晕染（量化后应为纯色）; "
+    "3)detail_ok 主体（脸/五官等关键细节）是否完整可辨、能认出原主体; "
+    "4)style_ok 整体是否符合拼豆图纸的清晰风格。"
+    "注意：这是成品预览图，可能带有圆润颗粒效果或轻微光影模拟，属于正常呈现，不作为不合格依据。"
 )
 
 def _codex_vision(image_path, prompt, timeout=150):

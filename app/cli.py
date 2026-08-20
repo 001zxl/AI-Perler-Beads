@@ -28,7 +28,7 @@ def main():
     ap.add_argument("--json", action="store_true", help="JSON 输出")
     args = ap.parse_args()
 
-    res = run_order(args.input, tier_key=args.tier, style_id=args.style, width=args.width,
+    res = run_order_with_qc_retry(args.input, tier_key=args.tier, style_id=args.style, width=args.width,
                     max_colors=args.colors, colorcard=args.colorcard, bead=args.bead,
                     subject=args.subject, do_qc=args.qc, skip_ai=args.skip_ai)
     if args.json:

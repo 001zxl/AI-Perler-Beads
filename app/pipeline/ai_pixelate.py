@@ -22,18 +22,18 @@ GENERIC_FRAGMENT = (
 def build_prompt(style_id="classic", width=30, max_colors=16, extra_subject="", is_edit=False):
     style = config.STYLES.get(style_id, config.STYLES["classic"])
     if is_edit:
-        # 编辑模式（基于原图）：先卡通化再像素化（照片→插画→拼豆）
+        # 编辑模式（基于原图）：忠实保留源图主体，仅做像素化，禁止艺术化改动
         return (
-            "先将这张照片转换为简洁的卡通插画风格："
-            "简化细节、大色块、清晰轮廓、减少噪点和纹理，"
-            "颜色层次分明（减少相近色阶），适合手工制作。"
-            "然后再转换为严格的拼豆像素图纸：每个像素格必须是单一纯色，"
-            "相邻格用清晰的分界网格线隔开，像马赛克拼豆图纸模板，"
-            "绝对不能有渐变、阴影、高光、晕染或任何非纯色效果，"
-            "每格颜色完全均匀平坦；"
-            f"风格: {style['prompt_fragment']}。"
-            f"网格约 {width} 格宽，最多 {max_colors} 种颜色。"
-            "保留主体形象和标志色，仅做卡通化+像素化。"
+            "严格参照这张照片，只做像素化处理，不要改变任何内容："
+            "完整保留主体的形状、五官比例（眼睛大小形状、鼻子位置、嘴巴、耳朵轮廓）、"
+            "表情和姿态，不要放大或缩小任何部位，不要卡通化、不要重新设计。"
+            "特别注意：保留眼睛的形状和瞳孔高光（不要变成方块或圆点）、"
+            "保留粉色鼻子的小三角形状、保留嘴巴曲线，这些是识别主体的关键。"
+            "转换方式：把照片变成马赛克像素网格图，每个格子用该位置照片的平均色填充，"
+            "格子是单一纯色，格与格之间干净分界，无渐变/阴影/高光/晕染，"
+            "像低分辨率的照片马赛克，而不是插画或漫画。"
+            f"网格约 {width} 格宽，最多 {max_colors} 种颜色，"
+            "必须保留原图能识别的主体特征。"
         )
     return (
         f"{GENERIC_FRAGMENT} "
@@ -45,29 +45,54 @@ def build_prompt(style_id="classic", width=30, max_colors=16, extra_subject="", 
 # GPT Image 2 脚本路径（codex CLI + ChatGPT 订阅，无需 API key）
 GEN_SCRIPT = os.path.expanduser("~/.agents/skills/gpt-image-2/scripts/gen.sh")
 
-def _gpt_pixelate(source_path, out_path, prompt, timeout=300):
+def _clean_codex_sessions(max_age_min=10, max_size_mb=200):
+    """清理 codex 旧会话，防止累积卡死（每次生成前调用）"""
+    import glob
+    sessions_dir = os.path.expanduser("~/.codex/sessions")
+    try:
+        files = glob.glob(os.path.join(sessions_dir, "**", "*.jsonl"), recursive=True)
+        import time
+        now = time.time()
+        for f in files:
+            try:
+                if now - os.path.getmtime(f) > max_age_min * 60:
+                    os.remove(f)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+def _gpt_pixelate(source_path, out_path, prompt, timeout=300, retries=3):
     """用 GPT Image 2 (gen.sh) 做 image-to-image 像素化
+    带自动重试（codex app-server 初始化不稳定，重试可提高成功率）
     返回 (success, out_path_or_err)
     """
+    import time
+    _clean_codex_sessions()  # 预防会话累积卡死
     if not os.path.exists(GEN_SCRIPT):
         return False, "GPT Image 2 脚本未找到"
     cmd = ["bash", GEN_SCRIPT, "--prompt", prompt]
     if source_path and os.path.exists(source_path):
         cmd += ["--ref", source_path]
     cmd += ["--out", out_path, "--timeout-sec", str(timeout)]
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 30)
-        if r.returncode != 0:
-            err = r.stderr.strip()[-300:] if r.stderr else "GPT生成失败"
-            return False, f"GPT Image 2: {err}"
-        out = r.stdout.strip()
-        if out and os.path.exists(out):
-            return True, out_path
-        return False, f"GPT 输出异常: {out[:100]}"
-    except subprocess.TimeoutExpired:
-        return False, "GPT 生成超时"
-    except Exception as e:
-        return False, str(e)
+    last_err = ""
+    for attempt in range(retries):
+        if attempt > 0:
+            time.sleep(3)  # 重试前短暂等待，让 codex 服务恢复
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 30)
+            if r.returncode != 0:
+                last_err = r.stderr.strip()[-200:] if r.stderr else "GPT生成失败"
+                continue  # 重试
+            out = r.stdout.strip()
+            if out and os.path.exists(out):
+                return True, out_path
+            last_err = f"GPT 输出异常: {out[:100]}"
+        except subprocess.TimeoutExpired:
+            last_err = "GPT 生成超时"
+        except Exception as e:
+            last_err = str(e)
+    return False, f"GPT Image 2 (重试{retries}次后): {last_err}"
 
 def _bl_pixelate(source_path, out_path, prompt, safe_dir, model=None):
     """旧 bl 后端（fallback，key 失效时不可用）"""

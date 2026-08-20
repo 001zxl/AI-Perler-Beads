@@ -9,7 +9,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config
-from pipeline.run import run_order
+from pipeline.run import run_order, run_order_with_qc_retry
 from pipeline.deliver import make_order_dir
 import feedback as feedback_mod
 
@@ -101,7 +101,7 @@ async def generate(file: UploadFile = File(...), tier: str = Form("主力款"),
     src_path = os.path.join(order_dir, "source", "upload" + os.path.splitext(file.filename or "x.jpg")[1])
     with open(src_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
-    res = run_order(src_path, tier_key=tier, style_id=style, width=width,
+    res = run_order_with_qc_retry(src_path, tier_key=tier, style_id=style, width=width,
                     max_colors=colors, colorcard=colorcard, bead=bead,
                     subject=subject, title=title, do_qc=do_qc, skip_ai=skip_ai)
     TASKS[task_id] = res

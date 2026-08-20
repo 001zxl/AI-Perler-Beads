@@ -202,8 +202,9 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
                 qc_result = {"passed": True, "detail": {"reason": "代码确定性兜底生成（灰度化），跳过视觉质检"}, "target": "deterministic"}
                 steps["S8"] = "质检通过(代码兜底确定性生成)"
             else:
-                # 其他风格：检查 AI 像素底图（AI 可能翻车处）
-                qc_target = pixel_path if os.path.exists(pixel_path) else (source_path if os.path.exists(source_path) else sheet_path)
+                # 其他风格：检查"量化后的成品预览"（真实交付物，单色由代码保证）
+                # 注意：不检查 AI 底图（GPT 带渐变但量化后已强制单色，避免误判）
+                qc_target = preview_path if os.path.exists(preview_path) else (sheet_path if os.path.exists(sheet_path) else pixel_path)
                 passed, detail = qc_image(qc_target, style_desc=style["prompt_fragment"])
                 qc_result = {"passed": passed, "detail": detail, "target": os.path.basename(qc_target)}
                 steps["S8"] = f"质检{'通过' if passed else '未通过'}: {detail.get('reason', '')}"
@@ -230,6 +231,30 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
     except Exception as e:
         traceback.print_exc()
         return {"success": False, "step": "?", "error": str(e), "order_id": order_id}
+
+
+def run_order_with_qc_retry(source_path, tier_key="主力款", style_id="classic", width=None, height="auto",
+                            max_colors=None, colorcard="mard", bead="2.6mm", title=None, subject="宠物",
+                            orders_root=None, skip_ai=False, do_qc=False, extra_subject="", max_retries=2):
+    """带质检重试的生成：QC 未通过时自动重新生成（GPT 随机性，重试可提高通过率）
+    返回最终结果
+    """
+    import time
+    last = None
+    for attempt in range(max_retries + 1):
+        if attempt > 0:
+            print(f"  质检未通过，第{attempt}次重试生成...", flush=True)
+            time.sleep(2)
+        last = run_order(source_path, tier_key=tier_key, style_id=style_id, width=width,
+                         height=height, max_colors=max_colors, colorcard=colorcard,
+                         bead=bead, title=title, subject=subject, orders_root=orders_root,
+                         skip_ai=skip_ai, do_qc=do_qc, extra_subject=extra_subject)
+        if last.get("success"):
+            qc = last.get("qc")
+            if not do_qc or (qc and qc.get("passed")):
+                return last  # 成功且质检通过（或未开质检）
+            # 质检未通过，继续重试
+    return last  # 重试用尽，返回最后一次结果
 
 if __name__ == "__main__":
     import argparse
