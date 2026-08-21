@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """照片类关键点回填。
 只从原图提取小面积暗部关键点，比如眼睛、鼻口、瞳孔。
-不要把全图边缘都画回去，否则浅色宠物照片会变成脏线稿。
+回填色直接用原图对应位置的真实颜色（压暗一档），不硬编码成黑块。
 """
 from PIL import Image
 import numpy as np
@@ -34,16 +34,9 @@ def restore_photo_details(grid_rgb, source_img, width, height, img_type="默认"
     def idx(y, x):
         return y * width + x
 
-    def feature_color(rgb):
-        r, g, b = rgb
-        return (
-            max(22, min(58, int(r * 0.42))),
-            max(20, min(52, int(g * 0.38))),
-            max(18, min(48, int(b * 0.36))),
-        )
-
     visited = np.zeros_like(dark_mask, dtype=bool)
-    max_feature_area = max(10, int(width * height * 0.006))
+    # 特征面积上限：眼睛/瞳孔约 15-40 格，禁止覆盖到球/身体大块阴影
+    max_feature_area = max(12, int(width * height * 0.0015))
     min_feature_area = 2
 
     for sy in range(height):
@@ -72,7 +65,8 @@ def restore_photo_details(grid_rgb, source_img, width, height, img_type="默认"
             ys = [y for _, y in cells]
             box_w = max(xs) - min(xs) + 1
             box_h = max(ys) - min(ys) + 1
-            if box_w > width * 0.18 or box_h > height * 0.16:
+            # 眼睛/鼻口紧凑；拉长的大阴影排除
+            if box_w > width * 0.10 or box_h > height * 0.08:
                 continue
 
             # 棕色阴影块通常整体偏暖且面积拉长；眼睛/瞳孔更低亮且更紧凑。
@@ -81,14 +75,21 @@ def restore_photo_details(grid_rgb, source_img, width, height, img_type="默认"
             if mean_lum > dark_threshold * 0.95 and mean_chroma > 65 and area > 8:
                 continue
 
+            # 回填色：取该簇在原图的实际主色，再压暗到 ~55% 亮度（保留色相，不是纯黑）
+            cluster_arr = arr[[y for _, y in cells], [x for x, _ in cells]]
+            med = np.median(cluster_arr, axis=0)
+            fill = np.clip(med * 0.55, 0, 255).astype(int)
+
             for x, y in cells:
                 i = idx(y, x)
-                out[i] = feature_color(out[i])
-                # 给关键点加极小的邻域，避免一颗点看起来像噪声。
-                if area <= max_feature_area * 0.55:
+                out[i] = tuple(fill)
+            # 关键点邻域只补一层且用同一真实色，避免单颗黑点
+            if area <= max_feature_area * 0.5:
+                for x, y in cells:
                     for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
                         if 0 <= nx < width and 0 <= ny < height:
                             ni = idx(ny, nx)
-                            out[ni] = feature_color(out[ni])
+                            if out[ni] == grid_rgb[ni]:
+                                out[ni] = tuple(fill)
 
     return out

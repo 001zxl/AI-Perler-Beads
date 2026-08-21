@@ -34,23 +34,25 @@ def _luminance(rgb):
 def _feature_weight(rgb, count, total):
     """选色权重：借鉴 Jett-Wu 的特征色保护思路。
     大面积色有基础权重；高饱和、深色、小面积关键色会加权，避免眼睛/鼻子/文字被压掉。
+    注意：高饱和加权不可过大——实测浅粉背景里的小暖色点会被放大成橙红棕大块（原图
+    仅 0.35% 的红棕点被扩到 4.9% 主色），必须收敛。
     """
     chroma = _chroma(rgb)
     lum = _luminance(rgb)
     share = count / max(1, total)
     score = count ** 0.55
-    if chroma > 70 and share > 0.004:
-        score *= 2.6
-    elif chroma > 45 and share > 0.006:
-        score *= 1.7
+    if chroma > 70 and share > 0.01:
+        score *= 1.35
+    elif chroma > 45 and share > 0.015:
+        score *= 1.2
     if lum < 65:
-        score *= 2.2
+        score *= 1.8
     elif lum < 95:
-        score *= 1.45
+        score *= 1.3
     if lum > 225 and share < 0.05:
-        score *= 1.5
-    if chroma > 55 and 0.004 <= share < 0.02:
-        score *= 2.3
+        score *= 1.3
+    if chroma > 55 and 0.01 <= share < 0.03:
+        score *= 1.4
     return score
 
 def _oklab_distance(a, b):
@@ -162,13 +164,13 @@ def _dominant_color(cell_rgb, protect_key=True):
 
 def quantize_grid(img, width_cells, height_cells="auto", max_colors=16, use_dominant=True):
     """图片 → (grid_rgb: list[(r,g,b)] 按行优先, W, H)
-    height_cells="auto" 时按原图宽高比自适应（保持拼豆成品比例不变形）
+    height_cells="auto" 时按裁剪后的实际宽高比自适应（先裁剪再算比例，避免主体拉伸）
     use_dominant=True: 主导色提取（Zippland/perler-beads 方案，消除灰色毛边）
     use_dominant=False: 均值池化（旧方案，模糊）"""
+    img = _auto_crop(img)
     if height_cells == "auto" or height_cells is None:
         ratio = img.height / img.width
         height_cells = max(1, round(width_cells * ratio))
-    img = _auto_crop(img)
     rgb = np.asarray(img.convert("RGB"), dtype=np.uint8)
     h, w = rgb.shape[:2]
     cell_h = h / height_cells

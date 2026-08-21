@@ -127,9 +127,10 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
         if style.get("palette") == "mono":
             img = img.convert("L").convert("RGB")
         photo_like = meta.get("img_type", "默认") in ("宠物", "真人", "默认")
-        # 照片类用平均色真实模式，避免主导色把浅色毛发/肤色重组成硬块；
-        # 动漫/Logo 才用主导色模式保硬边。
-        grid_rgb, W, H = quantize_grid(img, width, height, max_colors, use_dominant=not photo_like)
+        # 统一用主导色模式：MEDIANCUT 全局量化会把浅粉/奶油色压成深红棕（实测
+        # 原图浅粉 40% → 量化后深红棕 3%+3%），是"成品颜色变橙红棕"的根因。
+        # 主导色 + 特征感知减色（global_quantize）保色准确且不丢五官。
+        grid_rgb, W, H = quantize_grid(img, width, height, max_colors, use_dominant=True)
         meta["grid"] = f"{W}x{H}"
         # 主导色后全局量化到 max_colors（防止每格独立采样导致色数爆炸）
         if len(set(grid_rgb)) > max_colors:
