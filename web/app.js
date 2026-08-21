@@ -1,13 +1,12 @@
 // 拼豆工坊前端逻辑
 let META = null;
-const state = { tier: "主力款", style: "classic", styles: [], compareMode: false, file: null, orderId: null };
+const state = { style: "classic", styles: [], compareMode: false, file: null, orderId: null };
 
 const $ = id => document.getElementById(id);
 
 async function init() {
   const r = await fetch("/api/meta");
   META = await r.json();
-  renderTiers();
   renderStyles();
   renderColorcards();
   bindUpload();
@@ -26,21 +25,6 @@ async function init() {
   loadHotspot();
 }
 
-function renderTiers() {
-  const box = $("tiers");
-  box.innerHTML = "";
-  Object.entries(META.tiers).forEach(([name, t]) => {
-    const d = document.createElement("div");
-    d.className = "tier-card" + (name === state.tier ? " active" : "");
-    d.innerHTML = `
-      <div class="price">¥${t.price}</div>
-      <div class="tname">${name}</div>
-      <div class="tdesc">${t.desc}</div>
-      <div class="feat">${t.features.join(" · ")}</div>`;
-    d.onclick = () => { state.tier = name; document.querySelectorAll(".tier-card").forEach(x => x.classList.remove("active")); d.classList.add("active"); };
-    box.appendChild(d);
-  });
-}
 
 // 风格色板预览圆点
 const SWATCH = {
@@ -146,7 +130,6 @@ async function generate() {
 
   const fd = new FormData();
   fd.append("file", state.file);
-  fd.append("tier", state.tier);
   fd.append("style", state.style);
   fd.append("width", $("width").value || "");
   fd.append("colors", $("colors").value || "");
@@ -175,7 +158,6 @@ async function generate() {
         $("status-text").textContent = "对比模式: 生成 " + s + " …";
         const fd2 = new FormData();
         fd2.append("file", state.file);
-        fd2.append("tier", state.tier);
         fd2.append("style", s);
         fd2.append("width", $("width").value || "");
         fd2.append("colors", $("colors").value || "");

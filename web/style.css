@@ -21,16 +21,6 @@ main { max-width: 860px; margin: 0 auto; padding: 0 16px; }
 #preview-img { max-height: 260px; max-width: 100%; border-radius: 10px; box-shadow: var(--shadow); }
 .ghost { margin-top: 10px; background: none; border: 1px solid #ccc; padding: 6px 14px; border-radius: 8px; cursor: pointer; }
 
-/* 档位 */
-.tier-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.tier-card { border: 2px solid #e5e5e5; border-radius: 12px; padding: 14px; cursor: pointer; transition: .15s; }
-.tier-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
-.tier-card.active { border-color: var(--accent); background: #fff7f3; }
-.tier-card .price { font-size: 24px; font-weight: 800; color: var(--accent); }
-.tier-card .tname { font-weight: 600; margin: 4px 0; }
-.tier-card .tdesc { font-size: 12px; color: #888; }
-.tier-card .feat { font-size: 11px; color: #666; margin-top: 6px; }
-
 /* 风格 */
 .style-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
 .style-btn { border: 2px solid #e5e5e5; border-radius: 10px; padding: 10px; cursor: pointer; text-align: left; transition: .15s; background: #fff; }
@@ -131,4 +121,4 @@ footer { text-align: center; color: #aaa; font-size: 12px; margin-top: 30px; }
 .health-bad:hover { opacity: 1; }
 .health-caution { border-color: #f9e79f !important; }
 .h-reason { color: #c0392b !important; }
-@media (max-width: 640px) { .tier-grid { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .style-grid { grid-template-columns: 1fr 1fr; } }

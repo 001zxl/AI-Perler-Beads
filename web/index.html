@@ -9,7 +9,7 @@
 <body>
 <header>
   <h1>🧩 拼豆工坊</h1>
-  <p class="sub">上传一张图 → 选档位 / 风格 / 规格 → 一键生成可施工交付包（含色号坐标 + 采购清单 + 成品预览 + 小红书素材）</p>
+  <p class="sub">上传一张图 → 选风格 / 规格 → 一键生成可施工交付包（含色号坐标 + 采购清单 + 成品预览 + 小红书素材）</p>
 </header>
 
 <main>
@@ -26,28 +26,22 @@
     </div>
   </section>
 
-  <!-- 档位 -->
-  <section class="card">
-    <h2>② 选择档位 <small class="hint">价格锚定，对应店铺链接</small></h2>
-    <div id="tiers" class="tier-grid"></div>
-  </section>
-
   <!-- 风格 -->
   <section class="card">
-    <h2>③ 选择风格 <small class="hint">同一张图可出多种风格</small></h2>
+    <h2>② 选择风格 <small class="hint">同一张图可出多种风格</small></h2>
     <label class="check compare-toggle"><input type="checkbox" id="compare-mode"> 对比模式（选 2-3 个风格批量生成后对比）</label>
     <div id="styles" class="style-grid"></div>
   </section>
 
   <!-- 规格 -->
   <section class="card">
-    <h2>④ 规格参数 <small class="hint">不选则用档位默认值</small></h2>
+    <h2>③ 规格参数 <small class="hint">不选则按图片类型自动推荐（宠物默认 100 宽/32 色）</small></h2>
     <div class="spec-row">
       <label>网格宽
-        <select id="width"><option value="">档位默认</option><option>30</option><option>50</option><option>60</option><option>80</option><option>100</option><option>120</option></select>
+        <select id="width"><option value="">自动推荐</option><option>30</option><option>50</option><option>60</option><option>80</option><option>100</option><option>120</option></select>
       </label>
       <label>最大色数
-        <select id="colors"><option value="">档位默认</option><option>8</option><option>12</option><option>16</option><option>24</option><option>32</option><option>36</option></select>
+        <select id="colors"><option value="">自动推荐</option><option>8</option><option>12</option><option>16</option><option>24</option><option>32</option><option>36</option></select>
       </label>
       <label>色卡
         <select id="colorcard"></select>
