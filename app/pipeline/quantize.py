@@ -24,14 +24,98 @@ def _auto_crop(img, margin_ratio=0.02):
         return img
     return img.crop((x0, y0, x1, y1))
 
+def _chroma(rgb):
+    return max(rgb) - min(rgb)
+
+def _luminance(rgb):
+    r, g, b = rgb
+    return 0.299 * r + 0.587 * g + 0.114 * b
+
+def _feature_weight(rgb, count, total):
+    """选色权重：借鉴 Jett-Wu 的特征色保护思路。
+    大面积色有基础权重；高饱和、深色、小面积关键色会加权，避免眼睛/鼻子/文字被压掉。
+    """
+    chroma = _chroma(rgb)
+    lum = _luminance(rgb)
+    share = count / max(1, total)
+    score = count ** 0.55
+    if chroma > 70 and share > 0.004:
+        score *= 2.6
+    elif chroma > 45 and share > 0.006:
+        score *= 1.7
+    if lum < 65:
+        score *= 2.2
+    elif lum < 95:
+        score *= 1.45
+    if lum > 225 and share < 0.05:
+        score *= 1.5
+    if chroma > 55 and 0.004 <= share < 0.02:
+        score *= 2.3
+    return score
+
+def _oklab_distance(a, b):
+    from colormap import rgb_to_oklab, delta_e_oklab
+    return delta_e_oklab(rgb_to_oklab(a), rgb_to_oklab(b))
+
 def global_quantize(grid_rgb, max_colors):
-    """全局量化：把主导色提取后的多色格压缩到 max_colors（k-means/中位切分）
-    解决：主导色每格独立采样 → 色数爆炸（如 219 色）的问题"""
-    img = Image.new("RGB", (len(grid_rgb), 1))
-    img.putdata(grid_rgb)
-    q = img.quantize(colors=max_colors, method=Image.Quantize.MEDIANCUT)
-    palette = q.getpalette()
-    return [(palette[i*3], palette[i*3+1], palette[i*3+2]) for i in q.getdata()]
+    """特征感知全局减色。
+    旧 MEDIANCUT 会优先照顾大面积颜色，容易吞掉眼睛、鼻子、Logo 文字等小特征。
+    新逻辑先按频率/饱和度/明暗挑候选色，再用 Oklab 距离做多样性补足，最后把每格映射到候选色。
+    """
+    if not grid_rgb or len(set(grid_rgb)) <= max_colors:
+        return grid_rgb
+    counts = Counter(grid_rgb)
+    total = len(grid_rgb)
+    colors = list(counts.keys())
+    ranked = sorted(
+        colors,
+        key=lambda c: (_feature_weight(c, counts[c], total), counts[c]),
+        reverse=True,
+    )
+    kept = []
+
+    def add_color(c, min_distance):
+        if c in kept or len(kept) >= max_colors:
+            return False
+        if kept:
+            nearest = min(_oklab_distance(c, k) for k in kept)
+            if nearest < min_distance:
+                return False
+        kept.append(c)
+        return True
+
+    # 1. 高频基础色，保证主体/背景大色块稳定。
+    for c in sorted(colors, key=lambda x: counts[x], reverse=True):
+        if len(kept) >= max(2, int(max_colors * 0.35)):
+            break
+        add_color(c, min_distance=4)
+
+    # 2. 特征色名额，优先保护深色眼睛/嘴线、高饱和球/鼻子。
+    feature_slots = max(3, int(max_colors * 0.30))
+    for c in ranked:
+        if len([k for k in kept if _chroma(k) > 45 or _luminance(k) < 95]) >= feature_slots:
+            break
+        add_color(c, min_distance=6)
+
+    # 3. 多样性补足，避免全是同一色系浅粉/奶白。
+    while len(kept) < max_colors:
+        best = None
+        best_score = -1
+        for c in ranked:
+            if c in kept:
+                continue
+            nearest = min(_oklab_distance(c, k) for k in kept) if kept else 100
+            score = _feature_weight(c, counts[c], total) * max(0.35, nearest / 18)
+            if score > best_score:
+                best, best_score = c, score
+        if best is None:
+            break
+        kept.append(best)
+
+    def nearest_kept(c):
+        return min(kept, key=lambda k: _oklab_distance(c, k))
+
+    return [nearest_kept(c) for c in grid_rgb]
 
 def _dominant_color(cell_rgb, protect_key=True):
     """特征保留主导色提取（Jett-Wu 思路）：
@@ -46,18 +130,32 @@ def _dominant_color(cell_rgb, protect_key=True):
     if not protect_key:
         top_key = counts.most_common(1)[0][0]
         return (int(top_key >> 16 & 0xFF), int(top_key >> 8 & 0xFF), int(top_key & 0xFF))
-    # 保护关键色：高饱和 / 深色 / 非常亮
-    def _is_key(rgb):
+    total = max(1, sum(counts.values()))
+    # 保护关键色：深色允许小占比（眼睛/嘴线）；高饱和必须有足够占比，避免截图/JPG噪声被放大。
+    def _key_priority(rgb, share):
         r, g, b = rgb
         mx, mn = max(r, g, b), min(r, g, b)
         sat = (mx - mn) / 255.0 if mx > 0 else 0
         bright = mx / 255.0
-        return sat > 0.6 or bright < 0.25 or bright > 0.92  # 高饱和/深色/高光
+        if bright < 0.25 and share >= 0.04:
+            return 4  # 眼睛/嘴线
+        if bright > 0.92 and share >= 0.10:
+            return 3  # 高光
+        if sat > 0.65 and share >= 0.18:
+            return 2  # 球/鼻子等真实色块，必须占比够
+        if sat > 0.45 and share >= 0.28:
+            return 1
+        return 0
     # 先找关键色（即使占比小也优先）
-    key_candidates = [k for k in counts if _is_key((k >> 16 & 0xFF, k >> 8 & 0xFF, k & 0xFF))]
+    key_candidates = []
+    for k, count in counts.items():
+        rgb = (k >> 16 & 0xFF, k >> 8 & 0xFF, k & 0xFF)
+        priority = _key_priority(rgb, count / total)
+        if priority:
+            key_candidates.append((priority, count, k))
     if key_candidates:
         # 取关键色中占比最高的（保护眼睛/鼻子/文字）
-        top_key = max(key_candidates, key=lambda k: counts[k])
+        _, _, top_key = max(key_candidates)
     else:
         top_key = counts.most_common(1)[0][0]
     return (int(top_key >> 16 & 0xFF), int(top_key >> 8 & 0xFF), int(top_key & 0xFF))

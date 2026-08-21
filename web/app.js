@@ -139,7 +139,7 @@ async function generate() {
   fd.append("title", $("title").value || "");
   fd.append("do_qc", $("qc").checked ? "true" : "false");
 
-  setFill(30); $("status-text").textContent = "生成中（经典约1分钟，AI风格约2-9分钟）…";
+  setFill(30); $("status-text").textContent = "确定性生成中（不重绘原图）…";
   try {
     const r = await fetch("/api/generate", { method: "POST", body: fd });
     setFill(85);

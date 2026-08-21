@@ -2,52 +2,52 @@
   "引流款": {
     "id": "entry",
     "price": 4.2,
-    "width": 30,
+    "width": 80,
     "height": "auto",
-    "colors": 8,
+    "colors": 24,
     "bead": "2.6mm",
     "colorcard": "mard",
     "style": "classic",
-    "features": ["新手版", "8色块面大", "含色号"],
+    "features": ["新手版", "80格起步", "含色号"],
     "desc": "让人进门",
     "difficulty": {
       "level": "新手",
-      "colors": 8,
-      "desc": "颜色少、块面大、像素粗"
+      "colors": 24,
+      "desc": "低价但不再使用30格劣化图"
     }
   },
   "主力款": {
     "id": "main",
     "price": 19.9,
-    "width": 60,
+    "width": 120,
     "height": "auto",
-    "colors": 12,
+    "colors": 36,
     "bead": "2.6mm",
     "colorcard": "mard",
     "style": "any",
-    "features": ["标准版", "保留五官", "色号+坐标", "采购清单", "成品预览"],
+    "features": ["标准版", "120格起步", "保留五官", "色号+坐标", "采购清单", "成品预览"],
     "desc": "主要利润",
     "difficulty": {
       "level": "标准",
-      "colors": 12,
-      "desc": "平衡相似度和可拼性"
+      "colors": 36,
+      "desc": "优先保留五官和主体姿态"
     }
   },
   "利润款": {
     "id": "profit",
     "price": 69,
-    "width": [30, 50, 60],
+    "width": [120, 140, 160],
     "height": "auto",
-    "colors": 18,
+    "colors": 48,
     "bead": "2.6mm",
     "colorcard": "mard",
     "style": "any",
-    "features": ["精细版", "更大尺寸", "更多颜色", "3尺寸包", "2风格包", "制作教程"],
+    "features": ["精细版", "高还原", "更多颜色", "3尺寸包", "2风格包", "制作教程"],
     "desc": "拉高客单",
     "difficulty": {
       "level": "精细",
-      "colors": 18,
-      "desc": "更大尺寸、更像原图"
+      "colors": 48,
+      "desc": "复杂照片高还原配置"
     }
   }
 }

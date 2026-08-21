@@ -65,10 +65,52 @@ def test_render_adaptive():
     assert sheet.size[0] > 500
     print("✅ test_render_adaptive (深色图纸渲染)")
 
+def test_pet_quality_floor():
+    from type_aware import TYPE_STRATEGIES
+    pet = TYPE_STRATEGIES["宠物"]
+    assert pet["recommended_width"] >= 120, "宠物默认宽度不能退回低清规格"
+    assert pet["min_width"] >= 100, "宠物最低宽度不能低于 100 格"
+    assert pet["max_colors_default"] >= 36, "宠物默认色数不能退回低色数"
+    assert pet["min_colors"] >= 32, "宠物最低色数不能低于 32"
+    print("✅ test_pet_quality_floor")
+
+def test_feature_aware_quantize_keeps_dark_detail():
+    from quantize import global_quantize
+    grid = (
+        [(250, 205, 215)] * 420
+        + [(248, 225, 205)] * 360
+        + [(232, 180, 150)] * 180
+        + [(22, 20, 19)] * 9
+        + [(170, 72, 92)] * 18
+    )
+    reduced = global_quantize(grid, 5)
+    assert any(max(c) < 45 for c in set(reduced)), "深色眼睛/鼻口特征不能被减色吞掉"
+    assert len(set(reduced)) <= 5, "全局减色必须遵守色数上限"
+    print("✅ test_feature_aware_quantize_keeps_dark_detail")
+
+def test_photo_detail_ignores_large_shadow():
+    from pipeline.photo_detail import restore_photo_details
+    img = Image.new("RGB", (40, 40), (245, 205, 215))
+    px = img.load()
+    for x in range(4, 36):
+        for y in range(31, 36):
+            px[x, y] = (65, 38, 28)
+    for x in range(12, 15):
+        for y in range(13, 16):
+            px[x, y] = (12, 10, 10)
+    grid = [(245, 205, 215)] * (40 * 40)
+    out = restore_photo_details(grid, img, 40, 40, img_type="宠物")
+    changed = sum(1 for before, after in zip(grid, out) if before != after)
+    assert 4 <= changed <= 80, f"只应回填小面积关键点，不能污染大面积阴影: changed={changed}"
+    print("✅ test_photo_detail_ignores_large_shadow")
+
 if __name__ == "__main__":
     test_quantize_grid()
     test_colormap_nearest()
     test_mono_palette_bias()
     test_stats_csv()
     test_render_adaptive()
+    test_pet_quality_floor()
+    test_feature_aware_quantize_keeps_dark_detail()
+    test_photo_detail_ignores_large_shadow()
     print("\n🎉 全部单元测试通过")

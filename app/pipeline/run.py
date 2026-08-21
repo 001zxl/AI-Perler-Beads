@@ -31,10 +31,11 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
     style = config.STYLES.get(style_id, config.STYLES["classic"])
 
     # ---- S0 图片类型识别（先于规格解析，类型策略决定规格下限）----
-    # 还原模式（非卡通化风格）走确定性 subject 判断（不调 GPT 视觉，快且稳）；
-    # 仅 AI 卡通化风格用 codex 视觉识别类型
+    # 默认彻底关闭 AI 重绘：图像模型会把定制照片改成另一张图，是当前质量事故的根因。
+    # 如确实要做 AI 卡通化，需显式设置环境变量 PERLER_ALLOW_AI_PIXELATE=1。
+    allow_ai_pixelate = os.environ.get("PERLER_ALLOW_AI_PIXELATE") == "1"
     cartoonize_styles = ("chibi_pastel", "kawaii", "popart", "vaporwave", "crayon", "comic")
-    need_ai = (not skip_ai) and style_id in cartoonize_styles
+    need_ai = allow_ai_pixelate and (not skip_ai) and style_id in cartoonize_styles
     img_type = "默认"
     try:
         from pipeline.type_aware import detect_type, subject_to_type
@@ -50,27 +51,29 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
     except Exception:
         strat = {}
 
-    # ---- 规格解析优先级：用户显式 > 类型策略 > 档位默认 ----
-    # 修复"利润款取第一个宽度 30"：档位宽度是列表时取最大值（利润款 [30,50,60] → 60）
+    # ---- 规格解析优先级：用户显式 > 类型策略 > 档位默认；再套类型最低质量线 ----
+    # 档位宽度是列表时取最大值，避免高价档误用最低规格。
     def _tier_default_width(t):
         w = t.get("width")
         if isinstance(w, list):
             return max(w) if w else 60
         return w or 60
 
-    user_explicit_width = width is not None  # 用户显式指定则尊重，不强制抬规格
     if width is None:
         width = strat.get("recommended_width") or _tier_default_width(tier)
     if isinstance(width, list):
         width = max(width)
-    # 宠物/真人 最低规格兜底（仅当宽度来自默认，用户显式选择时尊重用户）
+    # 宠物/真人 最低规格兜底：质量优先，强制避免 30x37 这类不可交付图纸。
     min_w = strat.get("min_width", 0)
-    if min_w and not user_explicit_width and width < min_w:
+    if min_w and width < min_w:
         width = min_w
     if max_colors is None:
         max_colors = strat.get("max_colors_default") or tier.get("colors", 12)
     if isinstance(max_colors, list):
         max_colors = max(max_colors)
+    min_colors = strat.get("min_colors", 0)
+    if min_colors and max_colors < min_colors:
+        max_colors = min_colors
 
     title = title or f"{subject}拼豆图纸 ({style['name']})"
     order_id = new_order_id()
@@ -123,7 +126,10 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
         # mono 风格兜底：强制灰度化（黑白线稿无需 AI 画，代码 100% 精确）
         if style.get("palette") == "mono":
             img = img.convert("L").convert("RGB")
-        grid_rgb, W, H = quantize_grid(img, width, height, max_colors, use_dominant=True)
+        photo_like = meta.get("img_type", "默认") in ("宠物", "真人", "默认")
+        # 照片类用平均色真实模式，避免主导色把浅色毛发/肤色重组成硬块；
+        # 动漫/Logo 才用主导色模式保硬边。
+        grid_rgb, W, H = quantize_grid(img, width, height, max_colors, use_dominant=not photo_like)
         meta["grid"] = f"{W}x{H}"
         # 主导色后全局量化到 max_colors（防止每格独立采样导致色数爆炸）
         if len(set(grid_rgb)) > max_colors:
@@ -154,18 +160,27 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
         # 面部保护：仅 AI 定位到真实区域时走 AI 保护（确定性保护已在上面算出，直接复用）
         if face_regions and any(k in face_regions for k in ("eyes", "nose", "mouth")):
             grid_rgb, protected_cells = apply_face_guard(grid_rgb, W, H, face_regions)
-        # 孤立噪点清理（保护格跳过，不洗掉眼睛/鼻口特征）
-        try:
-            grid_rgb, _iso = remove_isolated_pixels(grid_rgb, W, H, protected=protected_cells)
-        except TypeError:
-            grid_rgb, _iso = remove_isolated_pixels(grid_rgb, W, H)
-        # BFS 连通区域杂色清理（保护格跳过）
-        try:
-            grid_rgb = bfs_cleanup(grid_rgb, W, H, threshold=18, protected=protected_cells)
-        except TypeError:
-            grid_rgb = bfs_cleanup(grid_rgb, W, H, threshold=18)
-        # 鼻口小区域简化（粉鼻子 + 保护格跳过）
-        grid_rgb, _sm = simplify_small_regions(grid_rgb, W, H, min_area=3, protected=protected_cells)
+        if photo_like:
+            # 照片类只做轻清理。重 BFS 会把眼睛/嘴/爪和球边界重新拼坏。
+            try:
+                grid_rgb, _iso = remove_isolated_pixels(grid_rgb, W, H, min_cluster=2,
+                                                        protected=protected_cells)
+            except TypeError:
+                grid_rgb, _iso = remove_isolated_pixels(grid_rgb, W, H, min_cluster=2)
+            grid_rgb, _sm = simplify_small_regions(grid_rgb, W, H, min_area=2,
+                                                   protected=protected_cells)
+        else:
+            # 动漫/Logo/图标类可以做强清理，得到干净色块和硬边。
+            try:
+                grid_rgb, _iso = remove_isolated_pixels(grid_rgb, W, H, protected=protected_cells)
+            except TypeError:
+                grid_rgb, _iso = remove_isolated_pixels(grid_rgb, W, H)
+            try:
+                grid_rgb = bfs_cleanup(grid_rgb, W, H, threshold=18, protected=protected_cells)
+            except TypeError:
+                grid_rgb = bfs_cleanup(grid_rgb, W, H, threshold=18)
+            grid_rgb, _sm = simplify_small_regions(grid_rgb, W, H, min_area=3,
+                                                   protected=protected_cells)
         # 类型感知轮廓加粗（动漫/Logo 黑边、宠物深棕边）
         try:
             from pipeline.outline import strengthen_outline
@@ -178,6 +193,14 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
             grid_rgb, _sm2 = simplify_small_regions(grid_rgb, W, H, min_area=2, protected=protected_cells)
         except Exception:
             pass
+        # 照片类细节回填：从原图恢复眼睛/鼻口/爪子/球边界等结构，再落色卡。
+        if photo_like:
+            try:
+                from pipeline.photo_detail import restore_photo_details
+                grid_rgb = restore_photo_details(grid_rgb, img, W, H,
+                                                 img_type=meta.get("img_type", "默认"))
+            except Exception:
+                pass
         if len(set(grid_rgb)) > max_colors:
             grid_rgb = merge_near_colors(grid_rgb, max_colors)
         steps["S2"] = f"{W}x{H} 网格, {len(set(grid_rgb))} 色 (类型+轮廓+清理)"
@@ -185,6 +208,10 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
         # ---- S3 色卡映射（Oklab 感知色距，视觉更准）----
         mapper = OklabColorMapper(colorcard, style.get("palette", "standard"))
         steps["S3"] = f"{colorcard} 色卡映射完成 (Oklab)"
+
+        # 所有交付图统一使用真实色卡 RGB，避免预览色、施工图色块和采购色号不一致。
+        grid_rgb = [tuple(mapper.lookup(rgb)[2]) for rgb in grid_rgb]
+        steps["S3.5"] = "网格已落到真实色卡颜色"
 
         # ---- S5 统计 + CSV（先算，供施工图底部色卡区用）----
         rows, total = compute_stats(grid_rgb, mapper)

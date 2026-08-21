@@ -13,10 +13,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 TYPE_STRATEGIES = {
     "宠物": {
         "key_points": ["眼睛", "耳朵", "鼻子", "嘴巴", "爪子", "球/玩具边界"],
-        "max_colors_default": 32,
-        "recommended_width": 100,
-        "min_width": 80,
-        "outline": "medium",
+        "max_colors_default": 48,
+        "min_colors": 32,
+        "recommended_width": 140,
+        "min_width": 100,
+        "outline": "natural",
         "notes": "最低 80 宽/24-36 色保留五官；低对比图自动增强明暗；眼睛鼻口爪球边界确定性保护",
         "suggested_styles": ["classic", "pixel_pet", "chibi_pastel"],
     },
@@ -29,10 +30,11 @@ TYPE_STRATEGIES = {
     },
     "真人": {
         "key_points": ["眼睛", "鼻梁", "嘴巴", "手势"],
-        "max_colors_default": 32,
-        "recommended_width": 100,
-        "min_width": 80,
-        "outline": "soft",
+        "max_colors_default": 48,
+        "min_colors": 32,
+        "recommended_width": 140,
+        "min_width": 100,
+        "outline": "natural",
         "notes": "默认半身/头像，肤色减色阶，先卡通化再拼豆，手势单独保护；高规格保五官",
         "suggested_styles": ["classic", "watercolor", "dither"],
         "cartoonize_first": True,
@@ -119,4 +121,3 @@ def subject_to_type(subject):
     for kw in scene_kw:
         if kw in s: return "风景"
     return "默认"
-

@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""S2 前置预处理：低对比图明暗增强 + 背景弱化
-解决: 奶油白猫 + 粉色背景 + 粉色球 → 浅色混成一片，只剩黑轮廓撑形状
+"""S2 前置预处理：低对比图温和增强 + 背景轻弱化
+解决: 奶油白猫 + 粉色背景 + 粉色球 → 浅色混成一片
 策略(确定性，无 AI):
   1. 背景色检测（四角 + 边缘带众数）
-  2. 背景弱化: 背景像素去饱和 + 压暗（粉背景变浅灰粉，主体奶油白更突出）
-  3. 明暗对比增强: 亮度百分位拉伸（2%-98% → 0-255）+ 轻微饱和度提升
+  2. 背景弱化: 背景像素轻微去饱和并提亮（不要压暗，否则粉色会映射成灰/棕）
+  3. 温和对比/锐度增强，禁止激进百分位拉伸
 仅用于非 AI 还原模式的照片类（宠物/真人/默认），对 mono/neon 等特殊风格跳过
 """
 import numpy as np
@@ -46,31 +46,29 @@ def enhance_low_contrast(img, img_type="默认", style_id="classic", strength=1.
     if bg_ratio < 0.12:
         return _contrast_stretch(img)
 
-    # 2. 背景弱化：背景像素 去饱和 + 压暗
-    #   亮度: 压到背景原亮度的 82%；饱和度: 减 45%（粉背景 → 浅灰粉）
+    # 2. 背景弱化：背景像素轻微去饱和 + 提亮。
+    # 不要压暗背景；压暗会把粉白照片推到棕/灰色卡，导致成品发脏。
     out = arr.copy()
     lum = arr.mean(axis=2)
     # 背景去饱和：朝灰度方向混合
     gray = lum[..., None] * np.ones((1, 1, 3), dtype=np.float32)
-    desat = arr * 0.45 + gray * 0.55
-    # 压暗背景（相对原背景色更暗，拉开与主体亮度差）
-    darken = desat * 0.85
-    out[bg_mask] = darken[bg_mask]
+    desat = arr * 0.78 + gray * 0.22
+    light_bg = desat * 0.86 + np.array([255, 245, 248], dtype=np.float32) * 0.14
+    out[bg_mask] = np.clip(light_bg[bg_mask], 0, 255)
 
-    # 3. 主体亮度微提（奶油白更亮，与背景形成明暗对比）
+    # 3. 主体亮度微提（奶油白更亮，与背景形成一点明暗差）
     subject_mask = ~bg_mask
     if subject_mask.sum() > 0:
         sub_lum = lum[subject_mask].mean()
         if sub_lum < 200:  # 主体不是极亮时才提
-            out[subject_mask] = np.clip(out[subject_mask] * 1.06, 0, 255)
+            out[subject_mask] = np.clip(out[subject_mask] * 1.035, 0, 255)
 
-    # 4. 全局明暗对比拉伸（亮度 2%-98% 百分位 → 0-255）
+    # 4. 温和增强。绝不做百分位拉伸，避免把浅粉/肤色扭到红棕灰。
     enhanced = Image.fromarray(np.clip(out, 0, 255).astype(np.uint8))
-    enhanced = _contrast_stretch(enhanced)
-
-    # 5. 轻微饱和度提升（粉色球/五官更鲜明，背景已被去饱和）
     from PIL import ImageEnhance
-    enhanced = ImageEnhance.Color(enhanced).enhance(1.08 + 0.05 * strength)
+    enhanced = ImageEnhance.Contrast(enhanced).enhance(1.10 + 0.03 * strength)
+    enhanced = ImageEnhance.Color(enhanced).enhance(1.04)
+    enhanced = ImageEnhance.Sharpness(enhanced).enhance(1.20)
     return enhanced
 
 def _contrast_stretch(img):
