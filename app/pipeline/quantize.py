@@ -81,6 +81,32 @@ def global_quantize(grid_rgb, max_colors, similarity_threshold=2.0):
         if len(set(out)) <= max_colors:
             break
 
+    # 自适应兜底：若色数仍超上限（复杂图/长图），逐步提高阈值继续合并，直到达标。
+    # 这是拼豆图纸"色块聚合"的关键——纯频率合并对渐变照片保留太多过渡色，会让成品
+    # 看起来像"马赛克照片"而不是拼豆图纸（用户实测反馈）。
+    th = similarity_threshold
+    while len(set(out)) > max_colors and th < 14:
+        th += 1.5
+        replaced = set()
+        counts = Counter(out)
+        order = [k for k, _ in counts.most_common()]
+        oklabs = {c: rgb_to_oklab(c) for c in set(out)}
+        new_out = list(out)
+        for i, key in enumerate(order):
+            if key in replaced:
+                continue
+            ok1 = oklabs[key]
+            for j in range(i + 1, len(order)):
+                low = order[j]
+                if low in replaced:
+                    continue
+                if delta_e_oklab(ok1, oklabs[low]) < th:
+                    replaced.add(low)
+                    new_out = [key if c == low else c for c in new_out]
+            if len(set(new_out)) <= max_colors:
+                break
+        out = new_out
+
     if is_code:
         inv = {v: k for k, v in code2rgb.items()}
         return [inv.get(c, c) for c in out]
