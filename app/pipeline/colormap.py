@@ -120,8 +120,8 @@ class OklabColorMapper:
         # 在候选集中排除纯黑，让它映射到深棕/深灰
         black_code = self._find_black_code()
         black_rgb = self.colors[black_code]["rgb"]
-        is_near_black = sum(rgb) < 150  # 亮度很低
-        is_pure_black = sum(rgb) < 40   # 接近纯黑
+        is_near_black = int(rgb[0]) + int(rgb[1]) + int(rgb[2]) < 150  # 亮度很低
+        is_pure_black = int(rgb[0]) + int(rgb[1]) + int(rgb[2]) < 40   # 接近纯黑
 
         best_code, best_dE = None, float("inf")
         for code, clab in self._lab_cache.items():

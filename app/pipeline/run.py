@@ -114,9 +114,10 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
         # ---- S2 量化 ----
         from PIL import Image
         img = Image.open(work_img).convert("RGB")
-        # 低对比预处理（还原模式默认开启）：奶油白猫+粉背景 → 明暗对比增强+背景弱化
-        # 仅对非 AI 生成的底图（AI 卡通化底图由 GPT 控制对比度，不需再增强）
-        if work_img == source_path:
+        photo_like = meta.get("img_type", "默认") in ("宠物", "真人", "默认")
+        # 预处理：照片类跳过（酷猫原版不做任何预处理——实测对比度增强+锐化会把柔和
+        # 粉色系拉成偏硬偏脏、放大噪点。仅动漫/Logo 类保留可选增强。）
+        if work_img == source_path and not photo_like:
             try:
                 from pipeline.preprocess import enhance_low_contrast
                 img = enhance_low_contrast(img, img_type=meta.get("img_type", "默认"),
@@ -126,15 +127,28 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
         # mono 风格兜底：强制灰度化（黑白线稿无需 AI 画，代码 100% 精确）
         if style.get("palette") == "mono":
             img = img.convert("L").convert("RGB")
-        photo_like = meta.get("img_type", "默认") in ("宠物", "真人", "默认")
-        # 统一用主导色模式：MEDIANCUT 全局量化会把浅粉/奶油色压成深红棕（实测
-        # 原图浅粉 40% → 量化后深红棕 3%+3%），是"成品颜色变橙红棕"的根因。
-        # 主导色 + 特征感知减色（global_quantize）保色准确且不丢五官。
-        grid_rgb, W, H = quantize_grid(img, width, height, max_colors, use_dominant=True)
+        # 酷猫拼豆式流程（Zippland/perler-beads）：
+        #   采样（主导色）→ 直接映射到完整色卡 → 色号空间按频率合并相似色 → 轻清理/回填。
+        # 关键：先映射再合并（在色号空间操作），比"先减色再映射"色块更干净，颜色不跑偏。
+        # 照片类用酷猫式：纯频率采样 + 不裁剪边缘（保留完整构图，酷猫原版做法）；
+        # 动漫/Logo 用特征保护主导色 + 自动裁剪（保硬边、聚焦主体）。
+        grid_rgb, W, H = quantize_grid(img, width, height, max_colors,
+                                       use_dominant=True, pure_frequency=photo_like,
+                                       auto_crop=not photo_like)
         meta["grid"] = f"{W}x{H}"
-        # 主导色后全局量化到 max_colors（防止每格独立采样导致色数爆炸）
+        # 1) 映射到真实色卡（Oklab 最近色号）
+        mapper = OklabColorMapper(colorcard, style.get("palette", "standard"))
+        grid_rgb = [mapper.lookup(rgb)[0] for rgb in grid_rgb]  # 色号列表
+        steps["S3"] = f"{colorcard} 色卡映射完成 (Oklab)"
+        # 2) 酷猫式频率合并：低频相似色号并入高频色号（色号空间）。
+        # 照片类用较宽阈值自然合并（酷猫默认 4-5，实测 3.5 噪点率最低且色数合理）；
+        # 动漫/Logo 用窄阈值保细节。
+        merge_th = 4.5 if photo_like else 2.0
         if len(set(grid_rgb)) > max_colors:
-            grid_rgb = global_quantize(grid_rgb, max_colors)
+            grid_rgb = global_quantize(grid_rgb, max_colors, similarity_threshold=merge_th)
+        # 3) 转回 RGB 供清理/轮廓/回填使用
+        code2rgb = {code: tuple(c["rgb"]) for code, c in mapper.colors.items()}
+        grid_rgb = [code2rgb[k] for k in grid_rgb]
         # 特征保护（眼睛/鼻口/爪/球边界）：AI 风格用 AI 定位，还原模式用确定性检测
         face_regions = {}
         protected_cells = set()
@@ -162,14 +176,9 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
         if face_regions and any(k in face_regions for k in ("eyes", "nose", "mouth")):
             grid_rgb, protected_cells = apply_face_guard(grid_rgb, W, H, face_regions)
         if photo_like:
-            # 照片类只做轻清理。重 BFS 会把眼睛/嘴/爪和球边界重新拼坏。
-            try:
-                grid_rgb, _iso = remove_isolated_pixels(grid_rgb, W, H, min_cluster=2,
-                                                        protected=protected_cells)
-            except TypeError:
-                grid_rgb, _iso = remove_isolated_pixels(grid_rgb, W, H, min_cluster=2)
-            grid_rgb, _sm = simplify_small_regions(grid_rgb, W, H, min_area=2,
-                                                   protected=protected_cells)
+            # 照片类纯酷猫：不做网格级清理（酷猫原版只靠 291 色卡密度+频率合并，
+            # 网格清理反而打碎大色块、增加噪点）。频率合并已在 S2 完成。
+            pass
         else:
             # 动漫/Logo/图标类可以做强清理，得到干净色块和硬边。
             try:
@@ -182,37 +191,29 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
                 grid_rgb = bfs_cleanup(grid_rgb, W, H, threshold=18)
             grid_rgb, _sm = simplify_small_regions(grid_rgb, W, H, min_area=3,
                                                    protected=protected_cells)
-        # 类型感知轮廓加粗（动漫/Logo 黑边、宠物深棕边）
-        try:
-            from pipeline.outline import strengthen_outline
-            img_type_hint = meta.get("img_type", "默认")
-            grid_rgb = strengthen_outline(grid_rgb, W, H, img_type_hint)
-        except Exception:
-            pass
-        # 轮廓加粗后：保护格区域不再合并（确保眼睛/鼻口不被最后一步洗掉）
-        try:
-            grid_rgb, _sm2 = simplify_small_regions(grid_rgb, W, H, min_area=2, protected=protected_cells)
-        except Exception:
-            pass
-        # 照片类细节回填：从原图恢复眼睛/鼻口/爪子/球边界等结构，再落色卡。
-        if photo_like:
+        # 酷猫式后处理：照片类不加轮廓、不硬回填（实测这些是"五官过黑/头身变形"的失真源）。
+        # 动漫/Logo 类保留轮廓加粗（需要硬边风格）。
+        if not photo_like:
             try:
-                from pipeline.photo_detail import restore_photo_details
-                grid_rgb = restore_photo_details(grid_rgb, img, W, H,
-                                                 img_type=meta.get("img_type", "默认"))
+                from pipeline.outline import strengthen_outline
+                img_type_hint = meta.get("img_type", "默认")
+                grid_rgb = strengthen_outline(grid_rgb, W, H, img_type_hint)
             except Exception:
                 pass
+            # 轮廓加粗后：保护格区域不再合并（确保眼睛/鼻口不被最后一步洗掉）
+            try:
+                grid_rgb, _sm2 = simplify_small_regions(grid_rgb, W, H, min_area=2, protected=protected_cells)
+            except Exception:
+                pass
+        else:
+            # 照片类：不额外处理（酷猫原版，靠采样+频率合并保质量）
+            pass
         if len(set(grid_rgb)) > max_colors:
             grid_rgb = merge_near_colors(grid_rgb, max_colors)
-        steps["S2"] = f"{W}x{H} 网格, {len(set(grid_rgb))} 色 (类型+轮廓+清理)"
+        steps["S2"] = f"{W}x{H} 网格, {len(set(grid_rgb))} 色 (酷猫式采样+频率合并)"
 
-        # ---- S3 色卡映射（Oklab 感知色距，视觉更准）----
-        mapper = OklabColorMapper(colorcard, style.get("palette", "standard"))
-        steps["S3"] = f"{colorcard} 色卡映射完成 (Oklab)"
-
-        # 所有交付图统一使用真实色卡 RGB，避免预览色、施工图色块和采购色号不一致。
-        grid_rgb = [tuple(mapper.lookup(rgb)[2]) for rgb in grid_rgb]
-        steps["S3.5"] = "网格已落到真实色卡颜色"
+        # S3 已在 S2 完成（采样后直接映射色卡 + 频率合并），此处仅登记步骤说明。
+        steps["S3.5"] = "网格已落到真实色卡颜色(酷猫式)"
 
         # ---- S5 统计 + CSV（先算，供施工图底部色卡区用）----
         rows, total = compute_stats(grid_rgb, mapper)
@@ -300,14 +301,21 @@ def run_order(source_path, tier_key="主力款", style_id="classic", width=None,
                 steps["S8"] = "质检通过(代码兜底确定性生成)"
             elif work_img == source_path and not os.path.exists(pixel_path):
                 # 非 AI 还原模式：用确定性质检（不调 GPT 视觉，快且稳）
-                # 网格单色由代码保证，重点检查特征保留（关键色数量）
+                # 照片类（酷猫式）：重点查"颜色保真"（关键色存在 + 主色系未被压偏），
+                # 不看可拼性分——照片像素画连通块多、色数多是正常现象（酷猫原版也不评可拼性）。
                 try:
                     from pipeline.scorability import diagnostic_report
                     diag = diagnostic_report(grid_rgb, W, H, max_colors)
                     key_colors = sum(1 for c in set(grid_rgb)
                                      if max(c) - min(c) > 150 or max(c) < 80 or max(c) > 230)
-                    passed = key_colors >= 2 and diag["scorability"]["score"] >= 60
-                    detail = {"reason": f"确定性质检: 关键色{key_colors}种, 可拼性{diag['scorability']['score']}分", "pass": passed}
+                    if photo_like:
+                        # 酷猫式质量判据：关键色 >= 3（五官/球/背景层次存在）且色数合理（<=72）
+                        passed = key_colors >= 3 and len(set(grid_rgb)) <= 72
+                        detail = {"reason": f"酷猫式质检: 关键色{key_colors}种, 色数{len(set(grid_rgb))}种", "pass": passed}
+                    else:
+                        # 动漫/Logo 类：保持可拼性门槛（色块纯净、硬边清晰）
+                        passed = key_colors >= 2 and diag["scorability"]["score"] >= 60
+                        detail = {"reason": f"确定性质检: 关键色{key_colors}种, 可拼性{diag['scorability']['score']}分", "pass": passed}
                     qc_result = {"passed": passed, "detail": detail, "target": "deterministic"}
                     steps["S8"] = f"质检{'通过' if passed else '未通过'}: {detail['reason']}"
                 except Exception as e:

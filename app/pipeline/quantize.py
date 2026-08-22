@@ -31,93 +31,60 @@ def _luminance(rgb):
     r, g, b = rgb
     return 0.299 * r + 0.587 * g + 0.114 * b
 
-def _feature_weight(rgb, count, total):
-    """选色权重：借鉴 Jett-Wu 的特征色保护思路。
-    大面积色有基础权重；高饱和、深色、小面积关键色会加权，避免眼睛/鼻子/文字被压掉。
-    注意：高饱和加权不可过大——实测浅粉背景里的小暖色点会被放大成橙红棕大块（原图
-    仅 0.35% 的红棕点被扩到 4.9% 主色），必须收敛。
-    """
-    chroma = _chroma(rgb)
-    lum = _luminance(rgb)
-    share = count / max(1, total)
-    score = count ** 0.55
-    if chroma > 70 and share > 0.01:
-        score *= 1.35
-    elif chroma > 45 and share > 0.015:
-        score *= 1.2
-    if lum < 65:
-        score *= 1.8
-    elif lum < 95:
-        score *= 1.3
-    if lum > 225 and share < 0.05:
-        score *= 1.3
-    if chroma > 55 and 0.01 <= share < 0.03:
-        score *= 1.4
-    return score
-
 def _oklab_distance(a, b):
     from colormap import rgb_to_oklab, delta_e_oklab
     return delta_e_oklab(rgb_to_oklab(a), rgb_to_oklab(b))
 
-def global_quantize(grid_rgb, max_colors):
-    """特征感知全局减色。
-    旧 MEDIANCUT 会优先照顾大面积颜色，容易吞掉眼睛、鼻子、Logo 文字等小特征。
-    新逻辑先按频率/饱和度/明暗挑候选色，再用 Oklab 距离做多样性补足，最后把每格映射到候选色。
+
+def _oklab_of(rgb):
+    """缓存版 Oklab 转换（全局减色高频调用）"""
+    from colormap import rgb_to_oklab
+    return rgb_to_oklab(rgb)
+
+def global_quantize(grid_rgb, max_colors, similarity_threshold=2.0):
+    """酷猫拼豆式全局减色（Zippland/perler-beads 算法）。
+    原理：颜色本身已映射到色卡色号，此处按频率把"低频色并入高频相似色"——
+    Oklab 距离 < 阈值的低频色整体替换为高频色。这是酷猫成品色块干净的核心：
+    不加特征加权、不搞候选色，纯粹让大面积颜色吃掉相邻杂色。
+    返回：合并后的 grid（色数 <= max_colors，且尽量贴近原色）。
     """
     if not grid_rgb or len(set(grid_rgb)) <= max_colors:
         return grid_rgb
-    counts = Counter(grid_rgb)
-    total = len(grid_rgb)
-    colors = list(counts.keys())
-    ranked = sorted(
-        colors,
-        key=lambda c: (_feature_weight(c, counts[c], total), counts[c]),
-        reverse=True,
-    )
-    kept = []
+    from colormap import rgb_to_oklab, delta_e_oklab
+    # 兼容两种输入：RGB 元组 或 色号字符串（S2 映射后）
+    is_code = isinstance(grid_rgb[0], str)
+    if is_code:
+        import config
+        card = config.get_colorcard("mard")
+        code2rgb = {code: tuple(c["rgb"]) for code, c in card["colors"].items()}
+        rgb_grid = [code2rgb.get(c, (128, 128, 128)) for c in grid_rgb]
+    else:
+        rgb_grid = list(grid_rgb)
 
-    def add_color(c, min_distance):
-        if c in kept or len(kept) >= max_colors:
-            return False
-        if kept:
-            nearest = min(_oklab_distance(c, k) for k in kept)
-            if nearest < min_distance:
-                return False
-        kept.append(c)
-        return True
-
-    # 1. 高频基础色，保证主体/背景大色块稳定。
-    for c in sorted(colors, key=lambda x: counts[x], reverse=True):
-        if len(kept) >= max(2, int(max_colors * 0.35)):
-            break
-        add_color(c, min_distance=4)
-
-    # 2. 特征色名额，优先保护深色眼睛/嘴线、高饱和球/鼻子。
-    feature_slots = max(3, int(max_colors * 0.30))
-    for c in ranked:
-        if len([k for k in kept if _chroma(k) > 45 or _luminance(k) < 95]) >= feature_slots:
-            break
-        add_color(c, min_distance=6)
-
-    # 3. 多样性补足，避免全是同一色系浅粉/奶白。
-    while len(kept) < max_colors:
-        best = None
-        best_score = -1
-        for c in ranked:
-            if c in kept:
+    counts = Counter(rgb_grid)
+    order = [k for k, _ in counts.most_common()]  # 按频率降序
+    replaced = set()
+    out = list(rgb_grid)
+    oklabs = {c: rgb_to_oklab(c) for c in set(rgb_grid)}
+    for i, key in enumerate(order):
+        if key in replaced:
+            continue
+        ok1 = oklabs[key]
+        for j in range(i + 1, len(order)):
+            low = order[j]
+            if low in replaced:
                 continue
-            nearest = min(_oklab_distance(c, k) for k in kept) if kept else 100
-            score = _feature_weight(c, counts[c], total) * max(0.35, nearest / 18)
-            if score > best_score:
-                best, best_score = c, score
-        if best is None:
+            if delta_e_oklab(ok1, oklabs[low]) < similarity_threshold:
+                replaced.add(low)
+                out = [key if c == low else c for c in out]
+        # 若合并后色数达标，提前结束
+        if len(set(out)) <= max_colors:
             break
-        kept.append(best)
 
-    def nearest_kept(c):
-        return min(kept, key=lambda k: _oklab_distance(c, k))
-
-    return [nearest_kept(c) for c in grid_rgb]
+    if is_code:
+        inv = {v: k for k, v in code2rgb.items()}
+        return [inv.get(c, c) for c in out]
+    return out
 
 def _dominant_color(cell_rgb, protect_key=True):
     """特征保留主导色提取（Jett-Wu 思路）：
@@ -162,12 +129,17 @@ def _dominant_color(cell_rgb, protect_key=True):
         top_key = counts.most_common(1)[0][0]
     return (int(top_key >> 16 & 0xFF), int(top_key >> 8 & 0xFF), int(top_key & 0xFF))
 
-def quantize_grid(img, width_cells, height_cells="auto", max_colors=16, use_dominant=True):
+def quantize_grid(img, width_cells, height_cells="auto", max_colors=16, use_dominant=True,
+                   pure_frequency=False, auto_crop=True):
     """图片 → (grid_rgb: list[(r,g,b)] 按行优先, W, H)
-    height_cells="auto" 时按裁剪后的实际宽高比自适应（先裁剪再算比例，避免主体拉伸）
+    height_cells="auto" 时按实际宽高比自适应（先裁剪再算比例，避免主体拉伸）
     use_dominant=True: 主导色提取（Zippland/perler-beads 方案，消除灰色毛边）
+    pure_frequency=True: 酷猫式纯频率采样（每格取像素频率最高色，不做任何特征加权保护）。
+      实测特征保护会把小面积深色放大成黑块，纯频率采样五官更自然、色块更干净（酷猫原版做法）。
+    auto_crop=False: 不裁剪边缘（酷猫原版做法，保留完整构图；照片类默认关闭裁剪）。
     use_dominant=False: 均值池化（旧方案，模糊）"""
-    img = _auto_crop(img)
+    if auto_crop:
+        img = _auto_crop(img)
     if height_cells == "auto" or height_cells is None:
         ratio = img.height / img.width
         height_cells = max(1, round(width_cells * ratio))
@@ -186,7 +158,11 @@ def quantize_grid(img, width_cells, height_cells="auto", max_colors=16, use_domi
                 x0 = int(gx * cell_w)
                 x1 = max(x0 + 1, int((gx + 1) * cell_w))
                 cell = rgb[y0:y1, x0:x1].reshape(-1, 3)
-                grid_rgb.append(_dominant_color(cell))
+                if pure_frequency:
+                    # 酷猫式：纯频率最高色，不做特征保护
+                    grid_rgb.append(tuple(Counter(map(tuple, cell)).most_common(1)[0][0]))
+                else:
+                    grid_rgb.append(_dominant_color(cell))
     else:
         # 旧方案：LANCZOS 缩放到网格（均值池化，会模糊毛边）
         grid_img = img.convert("RGB").resize((width_cells, height_cells), Image.Resampling.LANCZOS)

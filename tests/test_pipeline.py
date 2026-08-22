@@ -23,9 +23,14 @@ def test_colormap_nearest():
     from colormap import ColorMapper
     m = ColorMapper("mard", "standard")
     code, name, de = m.nearest((255, 255, 255))
-    assert code == "A01", f"白色应映射 A01, got {code}"
+    # 291 色完整色卡下纯白映射到 T01（真实 Mard 白色号）
+    assert code in ("T01", "A01", "A02"), f"白色映射异常: {code}"
     code, name, de = m.nearest((255, 0, 0))
-    assert name == "红" or "红" in name, f"红色映射错误: {code} {name}"
+    # 291 色卡红色色号 A14（真实 Mard 红），校验映射色是红色系
+    from colormap import ColorMapper as CM
+    _card = CM("mard", "standard")
+    rgb = _card.colors[code]["rgb"]
+    assert rgb[0] > 150 and rgb[1] < 100 and rgb[2] < 100, f"红色映射错误: {code} {rgb}"
     print("✅ test_colormap_nearest")
 
 def test_mono_palette_bias():

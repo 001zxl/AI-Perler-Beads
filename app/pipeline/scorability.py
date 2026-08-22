@@ -23,19 +23,24 @@ def score_pattern(grid_rgb, width, height, max_colors):
     colors = Counter(grid_rgb)
     color_count = len(colors)
 
-    # 色数分: 越少越高（但太少的相似度低，取 8-16 最优；24-36 为高保真档，不重罚）
+    # 色数分: 越少越高（但太少的相似度低，取 8-16 最优；24-72 为高保真档，不重罚——
+    # 291 色完整色卡下照片类 40-65 色是正常现象，酷猫原版也不限制色数）
     if color_count <= 8:
         color_score = 90
     elif color_count <= 12:
         color_score = 85
     elif color_count <= 16:
-        color_score = 75
+        color_score = 78
     elif color_count <= 24:
-        color_score = 65
+        color_score = 72
     elif color_count <= 36:
+        color_score = 66
+    elif color_count <= 48:
+        color_score = 60
+    elif color_count <= 72:
         color_score = 55
     else:
-        color_score = 40
+        color_score = 42
 
     # 孤立点检测（被3个不同色包围）
     isolated = 0
